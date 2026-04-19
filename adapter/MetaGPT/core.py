@@ -1,0 +1,166 @@
+import asyncio
+from pathlib import Path
+
+from adapter.MetaGPT.middlewares.engineer import EngineerMiddleware
+from adapter.MetaGPT.middlewares.observe import ObserveMiddleware
+from adapter.MetaGPT.middlewares.team_leader import TeamLeaderMiddleware
+from adapter.MetaGPT.middlewares.terminal import TerminalMiddleware
+from adapter.MetaGPT.middlewares.think import ThinkMiddleware
+from adapter.MetaGPT.utils import get_name
+from adapter.middleware import patch_with_middlewares
+from monitor.base_monitor import BaseMonitor, RoleType
+
+from ..base_adapter import BaseAdapter
+from metagpt.prompts.di.team_leader import TL_INSTRUCTION
+from metagpt.prompts.di.architect import ARCHITECT_INSTRUCTION
+from metagpt.prompts.di.engineer2 import WRITE_CODE_SYSTEM_PROMPT
+from metagpt.prompts.product_manager import EXTRA_INSTRUCTION as PRODUCT_MANAGER_INSTRUCTION
+from metagpt.prompts.di.data_analyst import EXTRA_INSTRUCTION as DATA_ANALYST_INSTRUCTION
+from metagpt.config2 import config
+from metagpt.context import Context
+from metagpt.team import Message, Team
+from metagpt.roles import (
+    Architect,
+    DataAnalyst,
+    Engineer2,
+    ProductManager,
+    TeamLeader,
+)
+
+class MetaGPTAdapter(BaseAdapter):
+    def generate_repo(
+        self,
+        idea: str,
+        investment: float = 3.0,
+        n_round: int = 5,
+        code_review: bool = True,
+        run_tests: bool = False,
+        implement: bool = True,
+        project_name: str = "",
+        inc: bool = False,
+        project_path: str = "",
+        workspace: Path = None,
+        reqa_file: str = "",
+        max_auto_summarize_code: int =0,
+        recover_path: Path = None,
+        monitor: BaseMonitor = None,
+        use_async: bool = False
+    ):
+        
+        async def _safe_close_ctx_llm():
+            llm = getattr(ctx, "_llm", None)
+            if llm is None:
+                return
+            try:
+                await llm.aclose()
+            except Exception:
+                pass
+        
+
+        config.update_via_cli(project_path, project_name, inc, reqa_file, max_auto_summarize_code)
+        ctx = Context(config=config)
+
+        # resume MetaGPT MAS
+        if recover_path:
+            if not recover_path.exists():
+                raise FileNotFoundError(f"{recover_path} not exists")
+            self.company = Team.deserialize(stg_path=recover_path, context=ctx)
+            idea = self.company.idea
+            members = [role for role in self.company.env.get_roles().values()]
+
+            # awake current working agent 
+            last_role_name = get_name(monitor.history[-1].name)
+            last_role = self.company.env.get_role(last_role_name)
+            last_role.put_message(Message(content="", send_to={last_role_name}))
+        else:
+            # Initialize the Team
+            self.company = Team(context=ctx)
+            members = [
+                TeamLeader(),
+                ProductManager(),
+                Architect(),
+                Engineer2(),
+                DataAnalyst()
+            ]
+            self.company.hire(members)
+        
+        # insert monitor into MAS
+        for member in members:
+            member.editor.working_dir = workspace
+            patch_with_middlewares(
+                member,
+                "llm_cached_aask",
+                [ThinkMiddleware(monitor)]
+            )
+            patch_with_middlewares(
+                member,
+                "_observe",
+                [ObserveMiddleware(monitor)]
+            )
+            if hasattr(member, 'terminal'):
+                member.terminal.work_dir = workspace
+                patch_with_middlewares(
+                    member.terminal,
+                    "_read_and_process_output",
+                    [TerminalMiddleware(monitor)]
+                )
+            if hasattr(member, "write_new_code"):
+                patch_with_middlewares(
+                    member,
+                    "write_new_code",
+                    [EngineerMiddleware(monitor)]
+                )
+            if hasattr(member, "write_and_exec_code"):
+                patch_with_middlewares(
+                    member,
+                    "write_and_exec_code",
+                    [EngineerMiddleware(monitor)]
+                )
+            if hasattr(member, "publish_team_message"):
+                patch_with_middlewares(
+                    member,
+                    "publish_team_message",
+                    [TeamLeaderMiddleware(monitor)]
+                )
+
+        self.company.invest(investment)
+        coro = self.company.run(n_round=n_round, idea=idea)
+        if use_async:
+            async def _run_and_cleanup():
+                try:
+                    return await coro
+                finally:
+                    await _safe_close_ctx_llm()
+
+            return _run_and_cleanup()
+        else:
+            asyncio.run(coro)
+            asyncio.run(_safe_close_ctx_llm())
+            return ctx.kwargs.get("project_path")
+    
+    def run_backend(
+        self,
+        idea: str,
+        workspace: Path,
+        recovery: Path = None,
+        monitor: BaseMonitor = None
+    ):
+        return self.generate_repo(
+            idea=idea,
+            n_round=20,
+            recover_path=recovery,
+            workspace=workspace,
+            monitor=monitor
+        )
+    
+    def save_current_state(self, path: Path):
+        self.company.serialize(path)
+
+    def get_prompt_map(self):
+        return {
+            "Team Leader": TL_INSTRUCTION,
+            "Engineer": WRITE_CODE_SYSTEM_PROMPT,
+            "Architect": ARCHITECT_INSTRUCTION,
+            "Product Manager": PRODUCT_MANAGER_INSTRUCTION,
+            "Data Analyst": DATA_ANALYST_INSTRUCTION,
+        }
