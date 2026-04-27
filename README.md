@@ -64,6 +64,9 @@ pip install -e .
 # With MetaGPT backend
 pip install -e ".[metagpt]"
 
+# Or install MetaGPT fork directly
+pip install "metagpt @ git+https://github.com/yuyueryuyu/MetaGPT.git"
+
 # Development (lint, tests, types)
 pip install -e ".[all-with-dev]"
 ```
@@ -170,5 +173,5 @@ Add your paper, license, and contact here if you publish the framework.
 
 ## Acknowledgments
 
-- Integrates with **[MetaGPT](https://github.com/geekan/MetaGPT)** when using `adapter/MetaGPT`.
+- Integrates with your MetaGPT distribution fork: **[yuyueryuyu/MetaGPT](https://github.com/yuyueryuyu/MetaGPT)**.
 - Evaluation relies on your deployment of **sandbox_fusion** (or a compatible service).

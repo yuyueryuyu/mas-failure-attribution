@@ -22,9 +22,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Backend: MetaGPT (see adapter/MetaGPT). Pin metagpt to a version you have tested.
+# Backend: MetaGPT (see adapter/MetaGPT), installed from maintained fork.
 metagpt = [
-  "metagpt>=0.8.0",
+  "metagpt @ git+https://github.com/yuyueryuyu/MetaGPT.git",
 ]
 # All registered backends; add new optional groups when you add adapters (e.g. autogen, langgraph).
 all = [
