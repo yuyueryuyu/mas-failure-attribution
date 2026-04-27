@@ -1,8 +1,13 @@
+"""Generic middleware patching helpers for method interception."""
+
 import types
 import inspect
 
 class Context:
+    """Carry mutable call context through middleware hooks."""
+
     def __init__(self, instance, args, kwargs):
+        """Store target instance and positional/keyword arguments."""
         self.instance = instance
         self.args = args
         self.kwargs = kwargs
@@ -28,6 +33,7 @@ class Middleware:
         return result
 
 def build_llm_wrapper(func, middlewares):
+    """Build a sync or async wrapper that executes middleware hooks."""
     if inspect.iscoroutinefunction(func):
 
         async def async_wrapper(self, *args, **kwargs):
@@ -64,11 +70,12 @@ def build_llm_wrapper(func, middlewares):
 
 def patch_with_middlewares(instance, method_name, middlewares):
     """
-    patch target instance with middlewares
+    Patch a target instance method with middleware processing chain.
+
     Args:
-        instance: The instance that will be patched
-        method_name: The method that will be monitored
-        middlewares: A list that containing all middlewares you want to inject 
+        instance: The instance whose method will be patched.
+        method_name: The method name to be intercepted.
+        middlewares: Ordered middleware objects to inject.
     """
     method = getattr(instance, method_name)
 

@@ -1,3 +1,5 @@
+"""MetaGPT backend adapter that instruments roles with monitoring middlewares."""
+
 import asyncio
 from pathlib import Path
 
@@ -35,11 +37,14 @@ DEFAULT_HUMAN_REPLY = (
 )
 
 def install_human_input_autoreply(reply: str = None) -> None:
+    """Install deterministic auto-reply for any human-input callbacks."""
     if reply is None:
         reply = get_default_human_reply()
     set_human_input_func(lambda _: reply)
 
 class MetaGPTAdapter(BaseAdapter):
+    """Adapter implementation that runs tasks with MetaGPT team orchestration."""
+
     def generate_repo(
         self,
         idea: str,
@@ -59,8 +64,10 @@ class MetaGPTAdapter(BaseAdapter):
         use_async: bool = False,
         enable_lint: bool = True,
     ):
+        """Run or resume a MetaGPT team and execute the given task instruction."""
         
         async def _safe_close_ctx_llm():
+            """Close LLM client gracefully to avoid resource leaks."""
             llm = getattr(ctx, "_llm", None)
             if llm is None:
                 return
@@ -164,6 +171,7 @@ class MetaGPTAdapter(BaseAdapter):
         monitor: BaseMonitor = None,
         enable_lint: bool = True,
     ):
+        """Execute backend task using adapter defaults for round count and setup."""
         return self.generate_repo(
             idea=idea,
             n_round=20,
@@ -174,9 +182,11 @@ class MetaGPTAdapter(BaseAdapter):
         )
     
     def save_current_state(self, path: Path):
+        """Serialize current MetaGPT team state to recovery directory."""
         self.company.serialize(path)
 
     def get_prompt_map(self):
+        """Expose role system prompts for downstream logging and analysis."""
         return {
             "Team Leader": TL_INSTRUCTION,
             "Engineer": WRITE_CODE_SYSTEM_PROMPT,

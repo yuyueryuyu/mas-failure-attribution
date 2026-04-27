@@ -1,3 +1,5 @@
+"""Task evaluation utilities based on sandboxed correctness execution."""
+
 import asyncio
 import base64
 import json
@@ -15,6 +17,7 @@ from sandbox_fusion import (
 )
 
 def code_exec(code: str, test: str):
+    """Execute candidate solution with provided tests in sandbox runtime."""
 
     base64_content = base64.b64encode(code.encode("utf-8")).decode("utf-8")
     request = RunCodeRequest(
@@ -34,6 +37,7 @@ def code_exec(code: str, test: str):
 def run_correctness_eval_task(
     task: dict
 ) -> tuple[str, bool]:
+    """Run one task evaluation and return ``(task_id, passed)``."""
     solution = task["model_prediction"]
     test = task["test"]
     result = code_exec(solution, test)
@@ -46,10 +50,15 @@ def run_eval_tasks(
     skip_existing: bool = True,
 ) -> dict[str, bool]:
     """
-    Input:
-        tasks: list[dict]
-    Output:
-        dict[str, bool]: {task_id: pass/fail}
+    Evaluate all task logs under one round directory and save pass/fail map.
+
+    Args:
+        eval_path: Directory containing per-task subdirectories with ``log.json``.
+        data_source: Dataset source name used in evaluation output filename.
+        skip_existing: Whether to skip when evaluation result already exists.
+
+    Returns:
+        Mapping from task id to pass/fail status, or ``None`` when skipped.
     """
     logger.info(f'Starting to eval tasks in {eval_path}...')
     filename = f"eval_{data_source}.json"
@@ -75,6 +84,7 @@ def load_eval_results(
     eval_path: Path,
     data_source: str,
 ):
+    """Load previously saved evaluation result mapping for one round."""
     eval_results = read_json_file(eval_path / f"eval_{data_source}.json")
     return eval_results
     

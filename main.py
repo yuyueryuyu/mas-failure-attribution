@@ -1,31 +1,67 @@
+"""Entry point for running iterative attack/diagnosis attribution workflows.
+
+This module orchestrates:
+- task loading from a parquet dataset,
+- round-based coding task execution,
+- evaluation-driven branching into attack or diagnosis analysis,
+- replay from recovery snapshots,
+- and final attribution result persistence.
+"""
+
+# Standard library imports.
 import argparse
 import importlib
 import shutil
+from pathlib import Path
 from typing import Type
+
+# Third-party library imports.
 import datasets
 from sandbox_fusion import set_dataset_endpoint, set_sandbox_endpoint
 
+# Project-local imports: adapters and monitors.
 from adapter.base_adapter import BaseAdapter
 from monitor.attack_monitor import AttackMonitor
 from monitor.base_monitor import BaseMonitor
+
+# Project-local imports: pipeline stages.
 from pipeline.coding.attack import attack_analysis, get_attack_analysis
 from pipeline.coding.diagnose import diagnose_analysis, get_diagnose_analysis
 from pipeline.coding.eval import load_eval_results, run_eval_tasks
 from pipeline.coding.run import replay_coding_task, run_coding_task
+
+# Project-local imports: utilities.
 from utils.common import match_info, read_json_file, save_final_result, write_json_file
 from utils.logging import handler
 from utils.logging import logger
-from pathlib import Path
 
 from utils.prompts import REPLAY_PROMPT
 
 def _load_backend(name: str) -> Type[BaseAdapter]:
-    """Load backend module and validate required interface."""
+    """Load a backend adapter class by backend name.
+
+    Args:
+        name: Backend identifier that maps to ``adapter.<name>.core``.
+
+    Returns:
+        A class object that implements the ``BaseAdapter`` interface.
+    """
     backend = importlib.import_module(f"adapter.{name}.core")
     return getattr(backend, f'{name}Adapter')
 
 
 def main(args):
+    """Run the full multi-round attribution pipeline.
+
+    The function performs round-0 execution, evaluates outcomes, and then
+    iteratively applies attack or diagnosis analysis based on previous-round
+    evaluation results. It replays tasks from recovery snapshots and persists
+    final attribution records when behavior flips between rounds.
+
+    Args:
+        args: Parsed CLI arguments used to configure dataset, backend,
+            workspace/output directories, and round execution controls.
+    """
     dataset = datasets.load_dataset(
         "parquet", data_files={"train": args.dataset}, split="train"
     )
@@ -260,32 +296,13 @@ if __name__ == "__main__":
     # TODO: concurrency
     parser.add_argument("--concurrent", action="store_true", help="Enable concurrent processing")
     parser.add_argument("--skip_existing", "-s", action="store_true")
+    # TODO: add mode to control the run mode
     parser.add_argument(
         "--mode",
         type=str,
         choices=["full", "attack", "diagnose"],
         default="full",
         help="Run mode",
-    )
-
-    # Retry related parameters
-    parser.add_argument(
-        "--max_retries",
-        type=int,
-        default=3,
-        help="Maximum retry count (default: 3)",
-    )
-    parser.add_argument(
-        "--retry_delay",
-        type=int,
-        default=2,
-        help="Retry interval in seconds (default: 2)",
-    )
-    parser.add_argument(
-        "--backoff_factor",
-        type=float,
-        default=1.5,
-        help="Backoff factor (default: 1.5)",
     )
 
     args = parser.parse_args()

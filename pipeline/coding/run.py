@@ -1,3 +1,5 @@
+"""Core coding-task execution and replay helpers for each round."""
+
 from enum import Enum
 import json
 from pathlib import Path
@@ -13,6 +15,8 @@ from utils.logging import logger
 from utils.prompts import REPLAY_PROMPT
 
 class RunMode(Enum):
+    """Execution mode hints for task running strategies."""
+
     NONE = 0
     ATTACK = 1
     DIAGNOSE = 2
@@ -28,17 +32,20 @@ def run_coding_task(
     replay_info="",
 ):
     """
-    Execute a coding task using a multi-agent backend system.
+    Execute one coding task and persist structured execution logs.
+
     Args:
-        task (dict): Task specification. load from dataset
-        workspace (Path): Working directory where the backend executes the task
-        output (Path): Directory where logs and results are saved
-        Backend (Type[BaseAdapter]): Backend adapter class for task execution
-        recovery_dir (Path, optional): Path to recovery state for resuming former tasks. Defaults to None.
-        skipping_exists (bool, optional): If True, skip execution if log already exists. Defaults to True.
-        run_mode (RunMode, optional): Execution mode configuration. Defaults to RunMode.NONE.
+        task: Dataset task record.
+        workspace: Workspace directory for backend execution.
+        output: Output directory for logs and artifacts.
+        backend: Backend adapter implementing run/serialize APIs.
+        recovery_dir: Optional recovery directory for backend resume.
+        skip_existing: Whether to skip when ``log.json`` already exists.
+        monitor: Execution monitor used to capture history and topology.
+        replay_info: Prompt prefix used during replayed runs.
+
     Returns:
-        None
+        ``True`` when run completes and logs are saved, otherwise ``False``.
     """
     data_source = task["data_source"]
     task_id = task["task_id"]
@@ -115,6 +122,7 @@ def replay_coding_task(
     recovery_dir: Path = None,
     skip_existing: bool = True,
 ):
+    """Resume from recovery snapshot and execute one replayed task round."""
     recovery_path = output / 'recovery'
     logger.info('recovery info detected, resuming monitor...')
     monitor = AttackMonitor.deserialize(recovery_dir, recovery_path, workspace, backend, replay_info[-1])

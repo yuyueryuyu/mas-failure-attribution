@@ -1,3 +1,5 @@
+"""Middleware for thought tracing and editor command guidance injection."""
+
 from adapter.middleware import Middleware
 from monitor.base_monitor import RoleType
 from utils.logging import logger
@@ -25,10 +27,14 @@ EDITOR_COMMANDS_DOC = """
     """
 
 class ThinkMiddleware(Middleware):
+    """Record think outputs and prepend editor API contract to system prompt."""
+
     def __init__(self, monitor):
+        """Initialize middleware with monitor used for step recording."""
         self.monitor = monitor
     
     def before(self, ctx):
+        """Inject editor command documentation into first system message."""
         system_msgs = ctx.kwargs.get('system_msgs')
         system_msgs[0] = (
             EDITOR_COMMANDS_DOC
@@ -38,6 +44,7 @@ class ThinkMiddleware(Middleware):
         ctx.kwargs['system_msgs'] = system_msgs
 
     def after(self, ctx, result):
+        """Record thought content or inject replacement at target step."""
         name = ctx.instance.profile
         if self.monitor is not None and result != '':
             if self.monitor.should_inject():

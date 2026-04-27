@@ -1,3 +1,5 @@
+"""Fault taxonomy utilities for attack/diagnosis prompt construction."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -89,6 +91,8 @@ _FAULT_PROMPT_EN: Dict[str, Dict[str, str]] = {
 
 @dataclass(frozen=True)
 class FaultCandidate:
+    """Normalized fault candidate used by prompt builders and analysis logic."""
+
     code: str
     description: str
     failure_rate: float
@@ -118,12 +122,13 @@ def fault_candidates_for_prompt() -> List[Dict[str, Any]]:
 
 
 def build_two_stage_fault_library() -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """
-    说明：
-    - failure_rate: Table 2 中注入该根因后的平均任务失败率（Sum）
-    - execution_termination_rate: 执行中断率
-    - suboptimal_quality_rate: 结果质量下降率
-    - prevalence_note: Figure 3 / 正文中的出现频率描述（定性）
+    """Build the full two-stage fault taxonomy with metrics and descriptions.
+
+    Notes:
+        - failure_rate: Average task failure rate after injecting this root cause.
+        - execution_termination_rate: Ratio of runs that terminate abnormally.
+        - suboptimal_quality_rate: Ratio of runs that finish with degraded quality.
+        - prevalence_note: Qualitative prevalence description from report analysis.
     """
 
     return {
@@ -334,6 +339,7 @@ def build_two_stage_fault_library() -> Dict[str, Dict[str, Dict[str, Any]]]:
 
 
 def build_fault_library() -> Dict[str, FaultCandidate]:
+    """Flatten stage-2 fault entries into ``code -> FaultCandidate`` mapping."""
     library = {}
     two_stage = build_two_stage_fault_library()
     for fault in two_stage["stage2_fine"].values():

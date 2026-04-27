@@ -1,4 +1,6 @@
 
+"""Attack-analysis stage for generating new fault injection suggestions."""
+
 import json
 from pathlib import Path
 import shutil
@@ -19,17 +21,18 @@ def attack_analysis(
     skipping_exists: bool = True,
 ):
     """
-    Execute a coding task using a multi-agent backend system.
+    Generate and persist one attack suggestion for a task round.
+
     Args:
-        task (dict): Task specification. load from dataset
-        workspace (Path): Working directory where the backend executes the task
-        output (Path): Directory where logs and results are saved
-        Backend (Type[BaseAdapter]): Backend adapter class for task execution
-        recovery_dir (Path, optional): Path to recovery state for resuming former tasks. Defaults to None.
-        skipping_exists (bool, optional): If True, skip execution if log already exists. Defaults to True.
-        run_mode (RunMode, optional): Execution mode configuration. Defaults to RunMode.NONE.
+        task: Evaluated task log containing question/history/prediction fields.
+        workspace: Working directory used by backend generation.
+        output: Output directory where analysis artifacts are stored.
+        backend: Backend adapter used to execute prompt-driven generation.
+        injection_history: Existing attack/diagnose history from prior rounds.
+        skipping_exists: Whether to skip when target output already exists.
+
     Returns:
-        None
+        ``True`` when a valid attack analysis is generated, otherwise ``False``.
     """
     task_id = task["question_ID"]
     logger.info(f'Attack Analysis start for Task ID: {task_id}')
@@ -91,4 +94,5 @@ def attack_analysis(
 def get_attack_analysis(
     output: Path
 ) -> list[dict]:
+    """Load persisted attack analysis history from output directory."""
     return read_json_file(output / 'attack_analysis.json')
