@@ -1,119 +1,28 @@
 import argparse
-import asyncio
-from enum import Enum
 import importlib
-import json
 import shutil
 from typing import Type
 import datasets
+from sandbox_fusion import set_dataset_endpoint, set_sandbox_endpoint
 
 from adapter.base_adapter import BaseAdapter
+from monitor.attack_monitor import AttackMonitor
 from monitor.base_monitor import BaseMonitor
+from pipeline.coding.attack import attack_analysis, get_attack_analysis
+from pipeline.coding.diagnose import diagnose_analysis, get_diagnose_analysis
+from pipeline.coding.eval import load_eval_results, run_eval_tasks
+from pipeline.coding.run import replay_coding_task, run_coding_task
+from utils.common import match_info, read_json_file, save_final_result, write_json_file
 from utils.logging import handler
 from utils.logging import logger
-from utils.common import dumps
 from pathlib import Path
+
+from utils.prompts import REPLAY_PROMPT
 
 def _load_backend(name: str) -> Type[BaseAdapter]:
     """Load backend module and validate required interface."""
     backend = importlib.import_module(f"adapter.{name}.core")
     return getattr(backend, f'{name}Adapter')
-
-class RunMode(Enum):
-    NONE = 0
-    ATTACK = 1
-    DIAGNOSE = 2
-
-def run_coding_task(
-    task: dict,
-    workspace: Path,
-    output: Path,
-    Backend: Type[BaseAdapter],
-    recovery_dir: Path = None,
-    skipping_exists: bool = True,
-    run_mode: RunMode = RunMode.NONE
-):
-    """
-    Execute a coding task using a multi-agent backend system.
-    Args:
-        task (dict): Task specification. load from dataset
-        workspace (Path): Working directory where the backend executes the task
-        output (Path): Directory where logs and results are saved
-        Backend (Type[BaseAdapter]): Backend adapter class for task execution
-        recovery_dir (Path, optional): Path to recovery state for resuming former tasks. Defaults to None.
-        skipping_exists (bool, optional): If True, skip execution if log already exists. Defaults to True.
-        run_mode (RunMode, optional): Execution mode configuration. Defaults to RunMode.NONE.
-    Returns:
-        None
-    """
-    data_source = task["data_source"]
-    task_id = task["task_id"]
-    idea = (
-        task["question"]
-        + f"I wish you finish the task with a multi-agent cooperation"
-        + f"The file name of your solution MUST be 'solution.py' and MUST be located at root directory"
-    )
-    log = output / 'log.json'
-    if log.exists():
-        if skipping_exists:
-            logger.info(f'Log for task {task_id} exists, skipping this round...')
-            return
-        else:
-            logger.info(f'Log for task {task_id} exists, overriding...')
-            shutil.rmtree(workspace, ignore_errors=True)
-            shutil.rmtree(output, ignore_errors=True)
-            workspace.mkdir(parents=True, exist_ok=True)
-            output.mkdir(parents=True, exist_ok=True)
-    # set recovery info saving path for this turn
-    recovery_path = output / 'recovery'
-    adapter = Backend()
-    if not recovery_dir:
-        logger.info('No recovery info, initializing new monitor...')
-        monitor = BaseMonitor(recovery_path, workspace, adapter)
-    else:
-        logger.info('recovery info detected, resuming monitor...')
-        monitor = BaseMonitor.deserialize(recovery_dir, recovery_path, workspace, adapter)
-    try:
-        adapter.run_backend(
-            idea=idea,
-            workspace=workspace,
-            recovery=recovery_dir,
-            monitor=monitor
-        )
-    except Exception as e:
-        logger.error(f"Error running task {data_source}/{task_id}: {e}")
-    
-    logger.info(f'Task {data_source}/{task_id} ends executing...')
-    solution_path = workspace / 'solution.py'
-    if solution_path.exists():
-        model_prediction = solution_path.read_text()
-    else:
-        model_prediction = ""
-        logger.warning(f'solution.py not found for task {data_source}/{task_id}')
-    
-    prompt_map = adapter.get_prompt_map()
-
-    used_roles = set(h.name for h in monitor.history)
-    system_prompts = {
-        name: prompt_map[name]
-        for name in used_roles
-    }
-
-    with open(log, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "question": task["question"],
-                "question_ID": task["task_id"],
-                "ground_truth": task["reference_solution"],
-                "model_prediction": model_prediction,
-                "history": dumps(monitor.history),
-                "topology": dumps(monitor.topology),
-                "system_prompts": system_prompts,
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
 
 
 def main(args):
@@ -125,68 +34,211 @@ def main(args):
     if args.max_samples is not None:
         tasks = tasks[: args.max_samples]
         logger.info(f"Using {len(tasks)} tasks (max_samples={args.max_samples})")
-    backend = _load_backend(args.backend)
+    Backend = _load_backend(args.backend)
+    backend = Backend()
+
     data_source = tasks[0]["data_source"]
-    current_round = 0
-    base_workspace: Path = args.workspace
-    base_output: Path = args.output
+    workspace_root: Path = args.workspace
+    output_root: Path = args.output
+
+    skip_existing = args.skip_existing
+    max_rounds = args.max_rounds
+
     # covert to absolute path 
-    if not base_workspace.is_absolute():
-        base_workspace = base_workspace.absolute()
-    if not base_output.is_absolute():
-        base_output = base_output.absolute()
+    if not workspace_root.is_absolute():
+        workspace_root = workspace_root.absolute()
+    if not output_root.is_absolute():
+        output_root = output_root.absolute()
 
     # ROUND 0: run without injecting / diagnosing
     for task in tasks:
         task_id = task["task_id"].replace("/", "_")
-        workspace = base_workspace / data_source / f"round_{current_round}" / task_id
-        output = base_output / data_source / f"round_{current_round}" / task_id
+        workspace = workspace_root / data_source / f"round_0" / task_id
+        output = output_root / data_source / f"round_0" / task_id
         workspace.mkdir(parents=True, exist_ok=True)
         output.mkdir(parents=True, exist_ok=True)
+
+        logger.info('No recovery info, initializing new monitor...')
+        recovery_path = output / 'recovery'
+        monitor = BaseMonitor(recovery_path, workspace, backend)
+        
         run_coding_task(
             task,
             workspace,
             output,
             backend,
-            skipping_exists=args.skip_existing
+            skip_existing=skip_existing,
+            monitor=monitor
         )
 
-    # TODO: eval ROUND 0
-
-    # TODO: ROUND i >= 1: divide eval results of round 0 into success / fail
+    # Start to eval round 0
+    eval_path = output_root / data_source / "round_0"
+    run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
+    eval_results = load_eval_results(eval_path, data_source)
+    
+    # ROUND i >= 1: divide eval results of round 0 into success / fail
     # sucess -> attack pipeline
     # fail -> diagnose pipeline
     # current implementation is for testing replay function
-    current_round += 1
-    for i in range(current_round, args.max_rounds + 1):
-        for task in tasks:
+    completed_tasks = []
+    for current in range(1, max_rounds + 1):
+        for task in tasks:        
             task_id = task["task_id"].replace("/", "_")
-            last_round_output = base_output / data_source / f"round_{current_round-1}" / task_id
+            if task_id in completed_tasks:
+                continue
+            
+            logger.info(f'Round {current}: Start to process Task {task_id}')
+            last_round_output = output_root / data_source / f"round_{current-1}" / task_id
             if not last_round_output.exists():
                 raise FileNotFoundError(f'last round output not exists for {task_id}')
-            workspace = base_workspace / data_source / f"round_{current_round}" / task_id
-            output = base_output / data_source / f"round_{current_round}" / task_id
-            workspace.mkdir(parents=True, exist_ok=True)
+
+            last_round_log = read_json_file(last_round_output / 'log.json') 
+            output = output_root / data_source / f"round_{current}" / task_id
             output.mkdir(parents=True, exist_ok=True)
-            replay_step = 5
-            recovery_dir = last_round_output / 'recovery' / f'step_{replay_step}'
-            # MOVE last round's workspace to current round's workspace
-            shutil.copytree(
-                recovery_dir / 'workspace', 
-                workspace,
-                dirs_exist_ok=True
-            )
-            run_coding_task(
-                task,
-                workspace,
-                output,
-                backend,
-                recovery_dir=recovery_dir,
-                skipping_exists=args.skip_existing
-            )
-    
+            try:    
+                if eval_results[task_id]:
+                    logger.info(f'Last round processed as success for {task_id}, start the attack process...')
+                    
+                    workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_attack_analysis'
+                    workspace.mkdir(parents=True, exist_ok=True)
+                    previous_injections_path = last_round_output / 'attack_analysis.json'
+                    previous_injections = (
+                        read_json_file(previous_injections_path) 
+                            if previous_injections_path.exists() else []
+                    )
+
+                    is_success = attack_analysis(
+                        task=last_round_log,
+                        workspace=workspace,
+                        output=output,
+                        backend=backend,
+                        skipping_exists=skip_existing,
+                        injection_history=previous_injections
+                    )
+
+                    if not is_success:
+                        logger.info(f'Attack Analysis Failed, skipping this round...')
+                        shutil.copytree(
+                            last_round_output,
+                            output,
+                            dirs_exist_ok=True
+                        )
+                        continue
+
+                    replay_info = get_attack_analysis(output)
+                else:
+                    logger.info(f'Last round processed as failure for {task_id}, start the diagnosis process...')
+                    
+                    workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_diagnose_analysis'
+                    workspace.mkdir(parents=True, exist_ok=True)
+
+                    previous_injections_path = last_round_output / 'diagnose_analysis.json'
+                    previous_injections = (
+                        read_json_file(previous_injections_path) 
+                            if previous_injections_path.exists() else []
+                    )
+
+                    is_success = diagnose_analysis(
+                        task=last_round_log,
+                        workspace=workspace,
+                        output=output,
+                        backend=backend,
+                        skipping_exists=skip_existing,
+                        injection_history=previous_injections
+                    )
+                    if not is_success:
+                        logger.info(f'Diagnose Analysis Failed, skipping this round...')
+                        shutil.copytree(
+                            last_round_output,
+                            output,
+                            dirs_exist_ok=True
+                        )
+                        continue
+                    replay_info = get_diagnose_analysis(output)
+
+                replay_step = replay_info[-1]['step_id']
+                recovery_dir = last_round_output / 'recovery' / f'step_{replay_step}'
+                if not recovery_dir.exists():
+                    logger.info(f'Replay Failed, skipping this round...')
+                    shutil.copytree(
+                        last_round_output,
+                        output,
+                        dirs_exist_ok=True
+                    )
+                    continue
+
+                result = replay_coding_task(
+                    task,
+                    workspace,
+                    output,
+                    backend,
+                    replay_info=replay_info,
+                    recovery_dir=recovery_dir,
+                    skip_existing=skip_existing,
+                )
+                if not result:
+                    logger.info(f'Replay Failed, skipping this round...')
+                    shutil.copytree(
+                        last_round_output,
+                        output,
+                        dirs_exist_ok=True
+                    )
+                    continue
+            except Exception as e:
+                logger.error(f"Error processing task {task_id} in round {current}: {e}")
+                shutil.copytree(
+                    last_round_output,
+                    output,
+                    dirs_exist_ok=True
+                )
+                continue
+
+        # save last round's eval results
+        last_eval_results = eval_results
+        eval_path = output_root / data_source / f"round_{current}"
+        run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
+        eval_results = load_eval_results(eval_path, data_source)
+        
+        for task_id in eval_results:
+            if eval_results[task_id] ^ last_eval_results[task_id]:
+                output = output_root / data_source / f"round_{current}" / task_id
+                if last_eval_results[task_id]:
+                    logger.info(f'[Round {current}] Attack result eval changed to failure, diagnosing...')
+                    last_round_output = output_root / data_source / f"round_{current}" / task_id
+                    if not last_round_output.exists():
+                        raise FileNotFoundError(f'last round output not exists for {task_id}')
+                    last_round_log = read_json_file(last_round_output / 'log.json') 
+                    workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_diagnose_analysis'
+                    workspace.mkdir(parents=True, exist_ok=True)
+                    is_success = diagnose_analysis(
+                        task=last_round_log,
+                        workspace=workspace,
+                        output=output,
+                        backend=backend,
+                        skipping_exists=skip_existing,
+                    )
+                    final_info = get_attack_analysis(output)
+                    if is_success:
+                        diagnose_info = get_diagnose_analysis(output)
+                        if match_info(final_info, diagnose_info):
+                           logger.info(f'Direct diagnose success, regarding as easy injection...')
+                           continue 
+                else:
+                    last_round_output = output_root / data_source / f"round_{current-1}" / task_id
+                    if not last_round_output.exists():
+                        raise FileNotFoundError(f'last round output not exists for {task_id}')
+                    last_round_log = read_json_file(last_round_output / 'log.json') 
+                    final_info = get_diagnose_analysis(output)
+
+                completed_tasks.append(task_id)
+                save_final_result(output_root / 'final_results', last_round_log, final_info)
+            else:
+                logger.info(f'Eval Result remains the same, Attack/Diagnose Fail...')
+        
 if __name__ == "__main__":
     handler.doRollover()
+    set_sandbox_endpoint("http://localhost:8080/")
+    set_dataset_endpoint("http://localhost:8080/online_judge/")
     parser = argparse.ArgumentParser(description="Universal attack and diagnosis framework")
     parser.add_argument(
         "--dataset",

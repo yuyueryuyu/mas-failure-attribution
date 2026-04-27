@@ -80,3 +80,5 @@ class BaseMonitor(BaseModel):
     def record_topology(self, src: str, dst: str):
         self.topology.add_edge(src, dst)
         
+    def should_inject(self):
+        return False

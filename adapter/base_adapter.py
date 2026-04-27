@@ -10,7 +10,8 @@ class BaseAdapter(ABC):
         idea: str,
         workspace: Path,
         recovery: Path = None,
-        monitor = None
+        monitor = None,
+        enable_lint: bool = True,
     ):
         pass
 
