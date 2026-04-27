@@ -1,3 +1,5 @@
+"""Core monitor primitives for recording role interactions and recovery state."""
+
 from enum import Enum
 from pathlib import Path
 import shutil
@@ -10,10 +12,14 @@ from utils.logging import logger
 from utils.common import read_json_file, write_json_file
 
 class RoleType(Enum):
+    """Role categories used for history recording."""
+
     TERMINAL = "Terminal"
     ASSISTANT = "Assistant"
 
 class BaseMonitor(BaseModel):
+    """Track execution history, topology, and recoverable checkpoints."""
+
     history: list[History] = Field(default=[])
     topology: Topology = Field(default=Topology())
     step: int = Field(default=1)
@@ -23,18 +29,21 @@ class BaseMonitor(BaseModel):
     _backend: BaseAdapter = PrivateAttr()
 
     def __init__(self, recovery: Path, workspace: Path, backend: BaseAdapter, **data: Any):
+        """Initialize monitor with runtime paths and backend reference."""
         super().__init__(**data)
         self._recovery = recovery
         self._workspace = workspace
         self._backend = backend
 
     def serialize(self, stg_path: Path = None):
+        """Persist monitor metadata into the specified recovery step directory."""
         monitor_info_path = stg_path.joinpath("monitor.json")
         serialized_data = self.model_dump()
         write_json_file(monitor_info_path, serialized_data)
     
     @classmethod
     def deserialize(cls, stg_path: Path, recovery: Path, workspace: Path, backend: BaseAdapter) -> "BaseMonitor":
+        """Restore monitor metadata from a saved recovery step directory."""
         monitor_info_path = stg_path.joinpath("monitor.json")
         if not monitor_info_path.exists():
             raise FileNotFoundError(
@@ -51,6 +60,7 @@ class BaseMonitor(BaseModel):
         return monitor
 
     def record_step(self, content: str, name: str, role: RoleType):
+        """Record one assistant step or merge terminal output into prior step."""
         if role == RoleType.TERMINAL:
             # Merge terminal output into the previous step. 
             assert len(self.history) > 0, f'terminal outputs while no previous step'
@@ -78,5 +88,9 @@ class BaseMonitor(BaseModel):
         self.step += 1
 
     def record_topology(self, src: str, dst: str):
+        """Record directed interaction edge between two roles."""
         self.topology.add_edge(src, dst)
         
+    def should_inject(self):
+        """Return whether current step should inject attack/diagnosis content."""
+        return False

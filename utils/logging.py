@@ -1,3 +1,5 @@
+"""Central logging setup for file and console outputs."""
+
 import logging
 from logging.handlers import RotatingFileHandler
 from utils.config import config

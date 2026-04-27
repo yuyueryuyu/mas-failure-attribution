@@ -1,3 +1,5 @@
+"""MetaGPT backend adapter that instruments roles with monitoring middlewares."""
+
 import asyncio
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from adapter.MetaGPT.middlewares.think import ThinkMiddleware
 from adapter.MetaGPT.utils import get_name
 from adapter.middleware import patch_with_middlewares
 from monitor.base_monitor import BaseMonitor, RoleType
+from utils.prompts import REPLAY_PROMPT
 
 from ..base_adapter import BaseAdapter
 from metagpt.prompts.di.team_leader import TL_INSTRUCTION
@@ -26,8 +29,22 @@ from metagpt.roles import (
     ProductManager,
     TeamLeader,
 )
+from metagpt.logs import set_human_input_func
+
+DEFAULT_HUMAN_REPLY = (
+    "Proceed without the system design document. "
+    "Implement the solution based on the task requirement only."
+)
+
+def install_human_input_autoreply(reply: str = None) -> None:
+    """Install deterministic auto-reply for any human-input callbacks."""
+    if reply is None:
+        reply = get_default_human_reply()
+    set_human_input_func(lambda _: reply)
 
 class MetaGPTAdapter(BaseAdapter):
+    """Adapter implementation that runs tasks with MetaGPT team orchestration."""
+
     def generate_repo(
         self,
         idea: str,
@@ -44,10 +61,13 @@ class MetaGPTAdapter(BaseAdapter):
         max_auto_summarize_code: int =0,
         recover_path: Path = None,
         monitor: BaseMonitor = None,
-        use_async: bool = False
+        use_async: bool = False,
+        enable_lint: bool = True,
     ):
+        """Run or resume a MetaGPT team and execute the given task instruction."""
         
         async def _safe_close_ctx_llm():
+            """Close LLM client gracefully to avoid resource leaks."""
             llm = getattr(ctx, "_llm", None)
             if llm is None:
                 return
@@ -56,7 +76,7 @@ class MetaGPTAdapter(BaseAdapter):
             except Exception:
                 pass
         
-
+        install_human_input_autoreply(DEFAULT_HUMAN_REPLY)
         config.update_via_cli(project_path, project_name, inc, reqa_file, max_auto_summarize_code)
         ctx = Context(config=config)
 
@@ -65,13 +85,17 @@ class MetaGPTAdapter(BaseAdapter):
             if not recover_path.exists():
                 raise FileNotFoundError(f"{recover_path} not exists")
             self.company = Team.deserialize(stg_path=recover_path, context=ctx)
-            idea = self.company.idea
             members = [role for role in self.company.env.get_roles().values()]
 
             # awake current working agent 
-            last_role_name = get_name(monitor.history[-1].name)
-            last_role = self.company.env.get_role(last_role_name)
-            last_role.put_message(Message(content="", send_to={last_role_name}))
+            if len(monitor.history) > 0:
+                involved_role_names = [get_name(step.name) for step in monitor.history]
+                involved_roles = [self.company.env.get_role(name) for name in involved_role_names]
+                for role in involved_roles:
+                    role.put_message(Message(
+                        content=f'Continue to process: {idea}', 
+                        send_to={role.name}
+                    ))
         else:
             # Initialize the Team
             self.company = Team(context=ctx)
@@ -87,6 +111,7 @@ class MetaGPTAdapter(BaseAdapter):
         # insert monitor into MAS
         for member in members:
             member.editor.working_dir = workspace
+            member.editor.enable_auto_lint = False
             patch_with_middlewares(
                 member,
                 "llm_cached_aask",
@@ -143,24 +168,29 @@ class MetaGPTAdapter(BaseAdapter):
         idea: str,
         workspace: Path,
         recovery: Path = None,
-        monitor: BaseMonitor = None
+        monitor: BaseMonitor = None,
+        enable_lint: bool = True,
     ):
+        """Execute backend task using adapter defaults for round count and setup."""
         return self.generate_repo(
             idea=idea,
             n_round=20,
             recover_path=recovery,
             workspace=workspace,
-            monitor=monitor
+            monitor=monitor,
+            enable_lint=enable_lint,
         )
     
     def save_current_state(self, path: Path):
+        """Serialize current MetaGPT team state to recovery directory."""
         self.company.serialize(path)
 
     def get_prompt_map(self):
+        """Expose role system prompts for downstream logging and analysis."""
         return {
             "Team Leader": TL_INSTRUCTION,
             "Engineer": WRITE_CODE_SYSTEM_PROMPT,
             "Architect": ARCHITECT_INSTRUCTION,
             "Product Manager": PRODUCT_MANAGER_INSTRUCTION,
-            "Data Analyst": DATA_ANALYST_INSTRUCTION,
+            "DataAnalyst": DATA_ANALYST_INSTRUCTION,
         }

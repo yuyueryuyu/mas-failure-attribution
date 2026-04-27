@@ -1,5 +1,8 @@
+"""Middleware for thought tracing and editor command guidance injection."""
+
 from adapter.middleware import Middleware
 from monitor.base_monitor import RoleType
+from utils.logging import logger
 
 EDITOR_COMMANDS_DOC = """
     You can use the following Editor commands (use exact parameter names!):
@@ -24,30 +27,31 @@ EDITOR_COMMANDS_DOC = """
     """
 
 class ThinkMiddleware(Middleware):
+    """Record think outputs and prepend editor API contract to system prompt."""
+
     def __init__(self, monitor):
+        """Initialize middleware with monitor used for step recording."""
         self.monitor = monitor
-        
+    
     def before(self, ctx):
-        req = ctx.kwargs.get('req')
+        """Inject editor command documentation into first system message."""
         system_msgs = ctx.kwargs.get('system_msgs')
-        prompt = req[-1]['content']
-        name = ctx.instance.profile
         system_msgs[0] = (
             EDITOR_COMMANDS_DOC
             + "\n"
             + system_msgs[0]
         )
-        if self.monitor is not None and prompt != '':
-            step_content = f"{name} thinking: {prompt}"
-            self.monitor.record_step(step_content, name, RoleType.ASSISTANT)
-
-
         ctx.kwargs['system_msgs'] = system_msgs
-    
+
     def after(self, ctx, result):
+        """Record thought content or inject replacement at target step."""
         name = ctx.instance.profile
-        command_rsp = ctx.instance.command_rsp
-        if self.monitor is not None and command_rsp != '':
-            step_content = f'{name} thinking: {command_rsp}'
+        if self.monitor is not None and result != '':
+            if self.monitor.should_inject():
+                logger.info(f'Injection step detected, injecting...')
+                step_content = self.monitor.get_injection_content()
+                result = step_content
+            else:
+                step_content = f'{name} thinking: {result}'
             self.monitor.record_step(step_content, name, RoleType.ASSISTANT)
         return result

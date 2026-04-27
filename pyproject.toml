@@ -1,0 +1,66 @@
+# `sandbox_fusion` is imported by main and pipeline (eval) but is not a standard
+# PyPI name here; install it from your private index, vendored path, or VCS, e.g.:
+#   pip install "sandbox_fusion @ git+https://example.org/sandbox_fusion.git"
+#
+# When you publish a wheel, add it under [project] dependencies or
+# [project.optional-dependencies] sandbox = ["..."].
+
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mas-failure-attribution"
+version = "0.1.0"
+description = "Framework for building multi-agent system failure datasets and failure attribution."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "datasets>=2.14.0",
+  "pydantic>=2.0.0",
+  "tqdm>=4.64.0",
+]
+
+[project.optional-dependencies]
+# Backend: MetaGPT (see adapter/MetaGPT). Pin metagpt to a version you have tested.
+metagpt = [
+  "metagpt>=0.8.0",
+]
+# All registered backends; add new optional groups when you add adapters (e.g. autogen, langgraph).
+all = [
+  "mas-failure-attribution[metagpt]",
+]
+dev = [
+  "pytest>=7.0.0",
+  "ruff>=0.1.0",
+  "mypy>=1.0.0",
+]
+all-with-dev = [
+  "mas-failure-attribution[all,dev]",
+]
+
+[tool.hatch.build.targets.wheel]
+# Flat layout: top-level packages at repo root.
+packages = [
+  "adapter",
+  "monitor",
+  "model",
+  "pipeline",
+  "utils",
+]
+
+# Optional: include root main.py for `python -m` style; uncomment if you add __main__ later.
+# [tool.hatch.build.targets.sdist]
+# include = ["main.py", "README.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/adapter",
+  "/monitor",
+  "/model",
+  "/pipeline",
+  "/utils",
+  "/main.py",
+  "/README.md",
+  "/pyproject.toml",
+]
