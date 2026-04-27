@@ -163,15 +163,3 @@ mas-failure-attribution/
   utils/                  # prompts, fault library, logging, I/O
 ```
 
----
-
-## Citation & license
-
-Add your paper, license, and contact here if you publish the framework.
-
----
-
-## Acknowledgments
-
-- Integrates with your MetaGPT distribution fork: **[yuyueryuyu/MetaGPT](https://github.com/yuyueryuyu/MetaGPT)**.
-- Evaluation relies on your deployment of **sandbox_fusion** (or a compatible service).
