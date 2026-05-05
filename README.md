@@ -1,4 +1,4 @@
-# mas-failure-attribution
+# mas-failure-attribution-1
 
 A research-oriented framework to **build multi-agent system (MAS) failure datasets** and run **round-based attack / diagnosis workflows** for **failure attribution**. The core loop executes coding tasks, evaluates correctness in a **sandbox**, optionally designs **stealthy fault injections** (attack) or **root-cause fixes** (diagnosis), and **replays** execution from **recovery snapshots** to align attribution labels.
 
@@ -163,15 +163,3 @@ mas-failure-attribution/
   utils/                  # prompts, fault library, logging, I/O
 ```
 
----
-
-## Citation & license
-
-Add your paper, license, and contact here if you publish the framework.
-
----
-
-## Acknowledgments
-
-- Integrates with your MetaGPT distribution fork: **[yuyueryuyu/MetaGPT](https://github.com/yuyueryuyu/MetaGPT)**.
-- Evaluation relies on your deployment of **sandbox_fusion** (or a compatible service).
