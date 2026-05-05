@@ -11,6 +11,9 @@ class Context:
         self.instance = instance
         self.args = args
         self.kwargs = kwargs
+    
+    def __str__(self):
+        return f"{self.args} \n {self.kwargs}"
 
 
 class Middleware:
@@ -38,11 +41,18 @@ def build_llm_wrapper(func, middlewares):
 
         async def async_wrapper(self, *args, **kwargs):
             ctx = Context(self, args, kwargs)
-
+            cur_result = None
             for m in middlewares:
-                m.before(ctx)
-
-            result = await func(self, *ctx.args, **ctx.kwargs)
+                result = m.before(ctx)
+                if result is not None:
+                    if cur_result is not None:
+                        raise RuntimeError("Multiple middlewares returned a result in before hooks, which is not supported.")
+                    cur_result = result
+            if cur_result is not None:
+                result = cur_result
+                logger.info()
+            else:
+                result = await func(self, *ctx.args, **ctx.kwargs)
 
             for m in reversed(middlewares):
                 result = m.after(ctx, result)
@@ -55,11 +65,17 @@ def build_llm_wrapper(func, middlewares):
 
         def sync_wrapper(self, *args, **kwargs):
             ctx = Context(self, args, kwargs)
-
+            cur_result = None
             for m in middlewares:
-                m.before(ctx)
-
-            result = func(self, *ctx.args, **ctx.kwargs)
+                result = m.before(ctx)
+                if result is not None:
+                    if cur_result is not None:
+                        raise RuntimeError("Multiple middlewares returned a result in before hooks, which is not supported.")
+                    cur_result = result
+            if cur_result is not None:
+                result = cur_result
+            else:
+                result = func(self, *ctx.args, **ctx.kwargs)
 
             for m in reversed(middlewares):
                 result = m.after(ctx, result)

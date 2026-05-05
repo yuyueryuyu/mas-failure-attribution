@@ -8,15 +8,18 @@ from pydantic import PrivateAttr
 from adapter.base_adapter import BaseAdapter
 from monitor.base_monitor import BaseMonitor
 from utils.common import read_json_file
-
+from utils.logging import logger
+from utils.prompts import REPLAY_PROMPT
 
 class AttackMonitor(BaseMonitor):
     """Monitor variant that injects a single planned replay modification."""
 
     _attack_step: int = PrivateAttr()
     _attack_suggestion: str = PrivateAttr()
+    _last_round_log: dict = PrivateAttr()
+    _injected: bool = PrivateAttr(default=False)
 
-    def __init__(self, recovery: Path, workspace:Path, backend: BaseAdapter, suggestion: dict, **data: Any):
+    def __init__(self, recovery: Path, workspace:Path, backend: BaseAdapter, suggestion: dict, last_round_log: dict, **data: Any):
         """Initialize attack monitor from suggestion payload and base metadata."""
         super().__init__(recovery, workspace, backend, **data)
         self._attack_step = suggestion['step_id']
@@ -26,6 +29,7 @@ class AttackMonitor(BaseMonitor):
             self._attack_suggestion = suggestion['suggested_fix']
         else:
             raise KeyError('not found key in suggestion')
+        self._last_round_log = last_round_log
 
     @classmethod
     def deserialize(
@@ -49,14 +53,27 @@ class AttackMonitor(BaseMonitor):
             workspace=workspace, 
             backend=backend, 
             suggestion=suggestion,
+            last_round_log=None
             **monitor_info
         )
         return monitor
+
+    def inject_content(self, default_value:str) -> str:
+        if self.should_inject():
+            logger.info(f'Injection step detected, injecting...')
+            self._injected = True
+            return REPLAY_PROMPT.format(
+                original_task=default_value,
+                injection_info=self._attack_suggestion,
+            )
+        return default_value
+
+    def get_current_reply(self) -> str:
+        return self._last_round_log['history'][self.step-1]['content']
 
     def should_inject(self):
         """Return True when current step matches configured injection step."""
         return self.step == self._attack_step
     
-    def get_injection_content(self):
-        """Return injected content for current attack/diagnosis replay step."""
-        return self._attack_suggestion
+    def is_injected(self) -> bool:
+        return self._injected

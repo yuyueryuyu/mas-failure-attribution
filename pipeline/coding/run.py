@@ -9,10 +9,9 @@ from typing import Type
 from adapter.base_adapter import BaseAdapter
 from model.schema import History
 from monitor.attack_monitor import AttackMonitor
-from monitor.base_monitor import BaseMonitor, RoleType
+from monitor.base_monitor import BaseMonitor
 from utils.common import dumps
 from utils.logging import logger
-from utils.prompts import REPLAY_PROMPT
 
 class RunMode(Enum):
     """Execution mode hints for task running strategies."""
@@ -29,7 +28,6 @@ def run_coding_task(
     recovery_dir: Path = None,
     skip_existing: bool = True,
     monitor: BaseMonitor = None,
-    replay_info="",
 ):
     """
     Execute one coding task and persist structured execution logs.
@@ -50,8 +48,7 @@ def run_coding_task(
     data_source = task["data_source"]
     task_id = task["task_id"]
     idea = (
-        replay_info
-        + task["question"]
+        task["question"]
         + f"I wish you finish the task with a multi-agent cooperation"
         + f"The file name of your solution MUST be 'solution.py' and MUST be located at root directory"
     )
@@ -59,7 +56,7 @@ def run_coding_task(
     if log.exists():
         if skip_existing:
             logger.info(f'Log for task {task_id} exists, skipping this round...')
-            return
+            return True
         else:
             logger.info(f'Log for task {task_id} exists, overriding...')
             shutil.rmtree(workspace, ignore_errors=True)
@@ -92,9 +89,6 @@ def run_coding_task(
         for name in used_roles
     }
 
-    if monitor.should_inject():
-        return False
-
     with open(log, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -112,32 +106,3 @@ def run_coding_task(
             indent=2,
         )
     return True
-
-def replay_coding_task(
-    task: dict,
-    workspace: Path,
-    output: Path,
-    backend: BaseAdapter,
-    replay_info: list,
-    recovery_dir: Path = None,
-    skip_existing: bool = True,
-):
-    """Resume from recovery snapshot and execute one replayed task round."""
-    recovery_path = output / 'recovery'
-    logger.info('recovery info detected, resuming monitor...')
-    monitor = AttackMonitor.deserialize(recovery_dir, recovery_path, workspace, backend, replay_info[-1])
-    # MOVE last round's workspace to current round's workspace
-    shutil.copytree(
-        recovery_dir / 'workspace', 
-        workspace,
-        dirs_exist_ok=True
-    )
-    return run_coding_task(
-        task,
-        workspace,
-        output,
-        backend,
-        skip_existing=skip_existing,
-        monitor=monitor,
-        replay_info=REPLAY_PROMPT.format(original_task=task['question'], replay_info=replay_info)
-    )
