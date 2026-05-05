@@ -30,6 +30,18 @@ from metagpt.roles import (
     TeamLeader,
 )
 from metagpt.logs import set_human_input_func
+from metagpt.environment.mgx.mgx_env import MGXEnv
+from utils.logging import logger
+
+class SerialMGXEnv(MGXEnv):
+    """保留 MGX 消息链，仅将一轮内的多角色从并发改为串行。"""
+    async def run(self, k=1):
+        for _ in range(k):
+            for role in self.roles.values():
+                if role.is_idle:
+                    continue
+                await role.run()
+            logger.debug(f"is idle: {self.is_idle}")
 
 DEFAULT_HUMAN_REPLY = (
     "Proceed without the system design document. "
@@ -98,7 +110,7 @@ class MetaGPTAdapter(BaseAdapter):
                     ))
         else:
             # Initialize the Team
-            self.company = Team(context=ctx)
+            self.company = Team(context=ctx, env=SerialMGXEnv())
             members = [
                 TeamLeader(),
                 ProductManager(),
@@ -112,19 +124,21 @@ class MetaGPTAdapter(BaseAdapter):
         for member in members:
             member.editor.working_dir = workspace
             member.editor.enable_auto_lint = False
-            patch_with_middlewares(
-                member,
-                "llm_cached_aask",
-                [ThinkMiddleware(monitor)]
-            )
+            if hasattr(member, 'llm'):
+                patch_with_middlewares(
+                    member.llm,
+                    "aask",
+                    [ThinkMiddleware(monitor, member.profile)]
+                )
             patch_with_middlewares(
                 member,
                 "_observe",
                 [ObserveMiddleware(monitor)]
             )
+            
             if hasattr(member, 'terminal'):
                 member.terminal.work_dir = workspace
-                patch_with_middlewares(
+                '''patch_with_middlewares(
                     member.terminal,
                     "_read_and_process_output",
                     [TerminalMiddleware(monitor)]
@@ -147,7 +161,7 @@ class MetaGPTAdapter(BaseAdapter):
                     "publish_team_message",
                     [TeamLeaderMiddleware(monitor)]
                 )
-
+            '''
         self.company.invest(investment)
         coro = self.company.run(n_round=n_round, idea=idea)
         if use_async:
@@ -194,3 +208,4 @@ class MetaGPTAdapter(BaseAdapter):
             "Product Manager": PRODUCT_MANAGER_INSTRUCTION,
             "DataAnalyst": DATA_ANALYST_INSTRUCTION,
         }
+    

@@ -1,7 +1,8 @@
 """Middleware for thought tracing and editor command guidance injection."""
 
 from adapter.middleware import Middleware
-from monitor.base_monitor import RoleType
+from monitor.attack_monitor import AttackMonitor
+from monitor.base_monitor import BaseMonitor, RoleType
 from utils.logging import logger
 
 EDITOR_COMMANDS_DOC = """
@@ -29,29 +30,27 @@ EDITOR_COMMANDS_DOC = """
 class ThinkMiddleware(Middleware):
     """Record think outputs and prepend editor API contract to system prompt."""
 
-    def __init__(self, monitor):
+    def __init__(self, monitor, name):
         """Initialize middleware with monitor used for step recording."""
         self.monitor = monitor
-    
+        self.name = name
+
     def before(self, ctx):
         """Inject editor command documentation into first system message."""
+        if self.monitor is None or not isinstance(self.monitor, AttackMonitor):
+            return
         system_msgs = ctx.kwargs.get('system_msgs')
-        system_msgs[0] = (
-            EDITOR_COMMANDS_DOC
-            + "\n"
-            + system_msgs[0]
-        )
+        if system_msgs is None:
+            system_msgs = [""]
+        system_msgs[0] = self.monitor.inject_content(default_value=system_msgs[0])
+        if not self.monitor.is_injected():
+            result = self.monitor.get_current_reply()
+            return result
         ctx.kwargs['system_msgs'] = system_msgs
 
     def after(self, ctx, result):
         """Record thought content or inject replacement at target step."""
-        name = ctx.instance.profile
-        if self.monitor is not None and result != '':
-            if self.monitor.should_inject():
-                logger.info(f'Injection step detected, injecting...')
-                step_content = self.monitor.get_injection_content()
-                result = step_content
-            else:
-                step_content = f'{name} thinking: {result}'
-            self.monitor.record_step(step_content, name, RoleType.ASSISTANT)
+        if self.monitor is None:
+            return result
+        self.monitor.record_step(result, self.name, RoleType.ASSISTANT)
         return result
