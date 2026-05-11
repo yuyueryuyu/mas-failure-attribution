@@ -3,6 +3,9 @@
 import types
 import inspect
 
+from utils.logging import logger
+
+
 class Context:
     """Carry mutable call context through middleware hooks."""
 

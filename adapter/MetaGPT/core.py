@@ -184,8 +184,10 @@ class MetaGPTAdapter(BaseAdapter):
         recovery: Path = None,
         monitor: BaseMonitor = None,
         enable_lint: bool = True,
+        task=None,
     ):
         """Execute backend task using adapter defaults for round count and setup."""
+        del task  # Dataset row not used by MetaGPT adapter.
         return self.generate_repo(
             idea=idea,
             n_round=20,

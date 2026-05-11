@@ -26,9 +26,14 @@ dependencies = [
 metagpt = [
   "metagpt @ git+https://github.com/yuyueryuyu/MetaGPT.git",
 ]
+# Backend: MagenticOne / AutoGen (see adapter/MagenticOne).
+magentic = [
+  "autogen-agentchat>=0.4.0",
+  "autogen-ext[magentic-one,openai]>=0.4.0",
+]
 # All registered backends; add new optional groups when you add adapters (e.g. autogen, langgraph).
 all = [
-  "mas-failure-attribution[metagpt]",
+  "mas-failure-attribution[metagpt,magentic]",
 ]
 dev = [
   "pytest>=7.0.0",

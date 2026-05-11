@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, Optional
 
 
 class BaseAdapter(ABC):
@@ -16,6 +16,7 @@ class BaseAdapter(ABC):
         recovery: Path = None,
         monitor = None,
         enable_lint: bool = True,
+        task: Optional[Dict[str, Any]] = None,
     ):
         """Execute a task idea inside a workspace with optional recovery/monitoring."""
         pass

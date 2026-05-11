@@ -8,9 +8,8 @@ from typing import Any, Callable
 from pydantic import BaseModel, Field, PrivateAttr
 from adapter.base_adapter import BaseAdapter
 from model.schema import Topology, History
-from utils.logging import logger
 from utils.common import read_json_file, write_json_file
-
+from utils.logging import logger
 class RoleType(Enum):
     """Role categories used for history recording."""
 

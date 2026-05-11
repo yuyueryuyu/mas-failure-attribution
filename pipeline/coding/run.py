@@ -20,6 +20,29 @@ class RunMode(Enum):
     ATTACK = 1
     DIAGNOSE = 2
 
+
+# History may record ``user`` / ``unknown`` / adapter footer names; omit from ``system_prompts``.
+_SYSTEM_PROMPTS_SKIP_NAMES = frozenset({"user", "unknown", "MagenticOne"})
+
+
+def _magentic_one_task_idea(task: dict, workspace: Path) -> str:
+    """MagenticOne user message: kodcode gets workspace-bound ``solution.py`` instructions; others question only."""
+    if task.get("data_source") != "kodcode":
+        return task["question"]
+    workspace_dir = workspace.resolve()
+    solution_full = workspace_dir / "solution.py"
+    return (
+        f"{task['question']}\n\n"
+        "Finish this task using multi-agent cooperation.\n\n"
+        "Output requirements:\n"
+        "- Create or overwrite a file named exactly `solution.py`.\n"
+        "- Write it to exactly this path (do not use the repository root or another CWD):\n"
+        f"  {solution_full}\n"
+        "- Perform FileSurfer / Python file writes for the final solution under this directory:\n"
+        f"  {workspace_dir}\n"
+    )
+
+
 def run_coding_task(
     task: dict,
     workspace: Path,
@@ -47,11 +70,14 @@ def run_coding_task(
     """
     data_source = task["data_source"]
     task_id = task["task_id"]
-    idea = (
-        task["question"]
-        + f"I wish you finish the task with a multi-agent cooperation"
-        + f"The file name of your solution MUST be 'solution.py' and MUST be located at root directory"
-    )
+    if type(backend).__name__ == "MagenticOneAdapter":
+        idea = _magentic_one_task_idea(task, workspace)
+    else:
+        idea = (
+            task["question"]
+            + f"I wish you finish the task with a multi-agent cooperation"
+            + f"The file name of your solution MUST be 'solution.py' and MUST be located at root directory"
+        )
     log = output / 'log.json'
     if log.exists():
         if skip_existing:
@@ -68,25 +94,36 @@ def run_coding_task(
             idea=idea,
             workspace=workspace,
             recovery=recovery_dir,
-            monitor=monitor
+            monitor=monitor,
+            task=task,
         )
     except Exception as e:
         logger.error(f"Error running task {data_source}/{task_id}: {e}")
     
     logger.info(f'Task {data_source}/{task_id} ends executing...')
-    solution_path = workspace / 'solution.py'
-    if solution_path.exists():
-        model_prediction = solution_path.read_text()
+    if data_source == "kodcode":
+        solution_path = workspace / 'solution.py'
+        if solution_path.exists():
+            model_prediction = solution_path.read_text()
+        else:
+            model_prediction = ""
+            logger.warning(f'solution.py not found for task {data_source}/{task_id}')
     else:
-        model_prediction = ""
-        logger.warning(f'solution.py not found for task {data_source}/{task_id}')
-    
+        tr_getter = getattr(backend, "get_task_result_prediction_for_log", None)
+        if callable(tr_getter):
+            model_prediction = tr_getter() or ""
+            if not model_prediction.strip():
+                logger.warning(
+                    f"No TaskResult-derived prediction for task {data_source}/{task_id} "
+                    f"(log model_prediction left empty)."
+                )
     prompt_map = backend.get_prompt_map()
 
     used_roles = set(h.name for h in monitor.history)
     system_prompts = {
-        name: prompt_map[name]
+        name: prompt_map.get(name, "")
         for name in used_roles
+        if name not in _SYSTEM_PROMPTS_SKIP_NAMES
     }
 
     with open(log, "w", encoding="utf-8") as f:

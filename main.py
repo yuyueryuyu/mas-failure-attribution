@@ -29,12 +29,14 @@ from pipeline.coding.attack import attack_analysis, get_attack_analysis
 from pipeline.coding.diagnose import diagnose_analysis, get_diagnose_analysis
 from pipeline.coding.eval import load_eval_results, run_eval_tasks
 from pipeline.coding.run import run_coding_task
+from pipeline.multimodal_task.multimodal_eval import load_eval_results_new, run_eval_tasks_new
 
 # Project-local imports: utilities.
 from utils.common import match_info, read_json_file, save_final_result, write_json_file
+from utils.task_record import normalize_parquet_task_row
 from utils.logging import handler
 from utils.logging import logger
-
+from adapter.MagenticOne.magentic_runtime import _load_config_from_ini
 from utils.prompts import REPLAY_PROMPT
 
 def _load_backend(name: str) -> Type[BaseAdapter]:
@@ -70,10 +72,16 @@ def main(args):
     if args.max_samples is not None:
         tasks = tasks[: args.max_samples]
         logger.info(f"Using {len(tasks)} tasks (max_samples={args.max_samples})")
+    tasks = [
+        normalize_parquet_task_row(t, dataset_path=args.dataset)
+        for t in tasks
+    ]
     Backend = _load_backend(args.backend)
     backend = Backend()
 
-    data_source = tasks[0]["data_source"]
+    data_source = (tasks[0].get("data_source") or "").strip() if tasks else ""
+    if not data_source:
+        data_source = Path(str(args.dataset)).stem
     workspace_root: Path = args.workspace
     output_root: Path = args.output
 
@@ -110,8 +118,12 @@ def main(args):
 
     # Start to eval round 0
     eval_path = output_root / data_source / "round_0"
-    run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
-    eval_results = load_eval_results(eval_path, data_source)
+    if args.backend == "MagenticOne":
+        run_eval_tasks_new(eval_path, data_source=data_source, skip_existing=skip_existing)
+        eval_results = load_eval_results_new(eval_path, data_source)
+    else:
+        run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
+        eval_results = load_eval_results(eval_path, data_source)
     
     if rollout_only:
         return
@@ -216,8 +228,12 @@ def main(args):
         # save last round's eval results
         last_eval_results = eval_results
         eval_path = output_root / data_source / f"round_{current}"
-        run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
-        eval_results = load_eval_results(eval_path, data_source)
+        if args.backend == "MagenticOne":
+            run_eval_tasks_new(eval_path, data_source=data_source, skip_existing=skip_existing)
+            eval_results = load_eval_results_new(eval_path, data_source)
+        else:
+            run_eval_tasks(eval_path, data_source=data_source, skip_existing=skip_existing)
+            eval_results = load_eval_results(eval_path, data_source)
         
         for task_id in eval_results:
             if eval_results[task_id] ^ last_eval_results[task_id]:
@@ -256,6 +272,8 @@ def main(args):
                 logger.info(f'Eval Result remains the same, Attack/Diagnose Fail...')
         
 if __name__ == "__main__":
+    # 1. 先加载 config.ini 到环境变量
+    _load_config_from_ini()
     handler.doRollover()
     set_sandbox_endpoint("http://localhost:8080/")
     set_dataset_endpoint("http://localhost:8080/online_judge/")

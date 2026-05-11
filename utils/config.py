@@ -16,7 +16,7 @@ class CustomConfigParser(ConfigParser):
                 'log_level': _log_level
             }
         })
-        if not self.read('config.ini'):
+        if not self.read('config.ini', encoding='utf-8'):
             self.write_config()
 
     @property
