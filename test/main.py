@@ -330,7 +330,7 @@ if __name__ == "__main__":
         backend="MagenticOne",
         workspace=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_workspace"),
         output=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_output"),
-        max_samples=1,
+        max_samples=10,
         rollout=True,
         skip_existing=False,
         max_rounds=3,
@@ -354,14 +354,14 @@ if __name__ == "__main__":
         backend="MagenticOne",
         workspace=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_workspace"),
         output=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_output"),
-        max_samples=1,
+        max_samples=5,
         rollout=True,
         skip_existing=False,
         max_rounds=3,
         concurrent=False,
         mode="full",
     )
-    # args = _args_gaia_level1
-    args = _args_gaia_level2
+    args = _args_gaia_level1
+    # args = _args_gaia_level2
     # args = _args_gaia_level3
     main(args)

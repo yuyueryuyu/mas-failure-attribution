@@ -11,7 +11,6 @@ from sandbox_fusion import (
     RunStatus,
     run_code,
 )
-# 假设你项目中已经有构建模型客户端的工具，如果没有，可以使用 openai 原生库
 from adapter.MagenticOne.core import _build_model_client
 
 
