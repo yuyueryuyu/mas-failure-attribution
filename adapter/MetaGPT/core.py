@@ -34,7 +34,7 @@ from metagpt.environment.mgx.mgx_env import MGXEnv
 from utils.logging import logger
 
 class SerialMGXEnv(MGXEnv):
-    """保留 MGX 消息链，仅将一轮内的多角色从并发改为串行。"""
+    """Keep the MGX message chain; run each role sequentially within a round instead of concurrently."""
     async def run(self, k=1):
         for _ in range(k):
             for role in self.roles.values():

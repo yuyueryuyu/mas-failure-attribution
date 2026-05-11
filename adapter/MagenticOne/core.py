@@ -50,7 +50,7 @@ def _build_model_client():
     if base_url:
         kwargs["base_url"] = base_url
     
-    # 尝试从环境变量加载 model_info
+    # Load model_info from environment when provided.
     model_info = os.environ.get("MAGENTIC_MODEL_INFO_JSON")
     if model_info:
         try:
@@ -58,9 +58,9 @@ def _build_model_client():
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse MAGENTIC_MODEL_INFO_JSON: {e}")
     
-    # 如果未设置 model_info 且使用非标准模型，提供默认值
+    # Default model_info for non-standard / custom endpoints when unset.
     if "model_info" not in kwargs:
-        # 检查是否为非 OpenAI 标准模型
+        # Detect non-canonical OpenAI model ids or OpenRouter-style hosts.
         is_openrouter = base_url and "openrouter" in base_url.lower()
         is_custom_model = model not in ["gpt-4o", "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"]
         
@@ -81,7 +81,7 @@ def _build_model_client():
     if max_retries and max_retries.isdigit():
         kwargs["max_retries"] = int(max_retries)
     
-    # 创建自定义 HTTP 客户端（跳过 SSL 验证）并添加详细日志
+    # Custom HTTP client (SSL verify disabled) for restrictive proxies / dev setups.
     custom_http_client = httpx.AsyncClient(verify=False)
     kwargs["http_client"] = custom_http_client
     

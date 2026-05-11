@@ -38,7 +38,7 @@ def llm_semantic_eval(prediction: str, ground_truth: str, question: str) -> bool
     if not prediction or not ground_truth:
         return False
 
-    # 简单的精确匹配先行，节省 Token
+    # Cheap exact match first to save tokens.
     if prediction.strip().lower() == ground_truth.strip().lower():
         return True
 
@@ -107,7 +107,7 @@ def run_universal_eval_task(task: dict) -> tuple[str, bool]:
     question = task.get("question", "")
     test_code = task.get("test", "")
 
-    # 判断是否为代码任务
+    # Coding task when non-empty pytest body is present.
     if test_code and test_code.strip():
         result = code_exec(prediction, test_code)
         if result:
@@ -115,7 +115,7 @@ def run_universal_eval_task(task: dict) -> tuple[str, bool]:
         else:
             return task_id, False
     else:
-        # 非代码任务，使用 LLM 评测
+        # Non-code tasks: LLM semantic judge.
         is_correct = llm_semantic_eval(prediction, ground_truth, question)
         return task_id, is_correct
 

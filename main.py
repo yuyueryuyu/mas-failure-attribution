@@ -272,7 +272,7 @@ def main(args):
                 logger.info(f'Eval Result remains the same, Attack/Diagnose Fail...')
         
 if __name__ == "__main__":
-    # 1. 先加载 config.ini 到环境变量
+    # Load config.ini into environment variables first.
     _load_config_from_ini()
     handler.doRollover()
     set_sandbox_endpoint("http://localhost:8080/")

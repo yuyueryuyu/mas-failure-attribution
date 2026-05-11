@@ -272,7 +272,7 @@ def main(args):
                 logger.info(f'Eval Result remains the same, Attack/Diagnose Fail...')
         
 if __name__ == "__main__":
-    # 1. 先加载 config.ini 到环境变量
+    # Load config.ini into environment variables first.
     _load_config_from_ini()
     handler.doRollover()
     set_sandbox_endpoint("http://localhost:8080/")
@@ -309,8 +309,8 @@ if __name__ == "__main__":
     )
 
     # args = parser.parse_args()
-    # 调试：在此写入「假 argv」（不含脚本名），与命令行等价，例如：
-    # --- kodcode 调试（保留勿删；需要时整段取消注释）---
+    # Debug: fake argv (no script name), equivalent to CLI. Example:
+    # --- kodcode debug (keep; uncomment whole block when needed) ---
     # args = argparse.Namespace(
     #     dataset=r"D:\myproject\mira-ai-lab\mas-failure-attribution\adapter\MagenticOne\dataset\code\kodcode-light-rl-10k-hard.parquet",
     #     backend="MagenticOne",
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     #     mode="full",
     # )
     _GAIA_VAL = r"D:\myproject\mira-ai-lab\mas-failure-attribution\dataset\gaia_dataset_raw\2023\validation"
-    # --- GAIA metadata.level1（默认用于本地试跑；换 level 时只改下面赋值的变量名）---
+    # --- GAIA metadata.level1 (default local run; switch level by changing which `args =` line is active) ---
     _args_gaia_level1 = argparse.Namespace(
         dataset=rf"{_GAIA_VAL}\metadata.level1.parquet",
         backend="MagenticOne",

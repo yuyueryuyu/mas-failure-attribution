@@ -507,24 +507,24 @@ def env_flag(name: str) -> bool:
 
 
 def _load_config_from_ini():
-    """从 config.ini 加载配置并设置环境变量。"""
+    """Load ``config.ini`` and populate environment variables."""
     repo_root = Path(__file__).resolve().parent.parent.parent
     config_path = repo_root / "config.ini"
 
     if not config_path.exists():
-        print(f"[warn] 配置文件不存在: {config_path}")
+        print(f"[warn] Config file not found: {config_path}")
         return
 
     config = configparser.ConfigParser()
     config.read(config_path, encoding='utf-8')
 
     if 'magentic' not in config:
-        print(f"[warn] 配置文件中缺少 [magentic] 部分")
+        print(f"[warn] Config file missing [magentic] section")
         return
 
     magentic = config['magentic']
 
-    # API 配置
+    # API settings
     if magentic.get('api_key'):
         os.environ.setdefault('MAGENTIC_API_KEY', magentic['api_key'])
 
@@ -540,22 +540,22 @@ def _load_config_from_ini():
     if magentic.get('max_retries'):
         os.environ.setdefault('MAGENTIC_MAX_RETRIES', magentic['max_retries'])
 
-    # model_info JSON 配置
+    # model_info JSON
     if magentic.get('model_info'):
         os.environ.setdefault('MAGENTIC_MODEL_INFO_JSON', magentic['model_info'])
 
-    # GAIA 数据集配置
+    # GAIA dataset paths
     if magentic.get('gaia_validation_dir'):
         os.environ.setdefault('GAIA_VALIDATION_DIR', magentic['gaia_validation_dir'])
 
     if magentic.get('gaia_attachments_root'):
         os.environ.setdefault('GAIA_ATTACHMENTS_ROOT', magentic['gaia_attachments_root'])
 
-    # 运行参数
+    # Run / retry tuning
     if magentic.get('run_max_attempts'):
         os.environ.setdefault('TE_MG2_RUN_MAX_ATTEMPTS', magentic['run_max_attempts'])
 
     if magentic.get('run_retry_base_sec'):
         os.environ.setdefault('TE_MG2_RUN_RETRY_BASE_SEC', magentic['run_retry_base_sec'])
 
-    print(f"[config] 已从 {config_path} 加载配置")
+    print(f"[config] Loaded settings from {config_path}")
