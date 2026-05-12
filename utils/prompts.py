@@ -9,6 +9,7 @@ Task Information:
 - Question: {question}
 - Ground Truth: {ground_truth}
 - Model Prediction: {model_prediction}
+- Evaluation Running Message: {message} 
 
 Fault candidate pool (fault_code must be chosen from this list):
 {fault_pool_json}
@@ -24,7 +25,7 @@ Original Task Execution History:
 Your attack injection should be in the following JSON format. When writing to files, you should transform it to a **string** first:
 
 {{
-    "step_id": <step_number, should greater than {min_step_id} and not equal to any steps in injection history>,
+    "step_id": <step_number, should be greater than {min_step_id}, less than {max_step_id} and not equal to any steps in injection history>,
     "fault_code": "<fault code from fault candidate pool>",
     "attacked_content": "<specific, concrete modification to that step's `content, guidance only, NOT the complete solution>",
     "mistake_reason": "<the brief description for mistake reason>",
@@ -33,7 +34,7 @@ Your attack injection should be in the following JSON format. When writing to fi
 
 Important Guidelines:
 1. fault_code must be exactly one code from the fault candidate pool above.
-2. step_id must exist in the Original Task Execution History and should be > {min_step_id}.
+2. step_id must exist in the Original Task Execution History and should be in then range: {min_step_id} < step_id < {max_step_id}.
 3. If multiple injection points are possible, prefer an earlier step with lower step_id.
 4. attacked_content must be a concrete, implementable modification that is strong enough to convert a successful trajectory into failure.
 5. related_error: array of step_id integers from past injection history. Use [] if no direct relation.
@@ -54,8 +55,9 @@ Task ID: {task_id}
 Question: {question}
 Ground Truth: {ground_truth}
 Model Prediction: {model_prediction}
+Evaluation Running Message: {message} 
 
-Fault candidate pool (suspected_fault_codes MUST be chosen from these codes when possible):
+Fault candidate pool (fault_code MUST be chosen from these codes when possible):
 {fault_pool_json}
 
 Topology Information:
@@ -68,7 +70,7 @@ Original Task Execution History:
 
 Your diagnosis should be in the following JSON format, when writing to files, you should transform it to a **string** first:
 {{
-    "step_id": <step_number, should greater than {min_step_id} and not equal to any steps in injection history>,
+    "step_id": <step_number, should be greater than {min_step_id}, less than {max_step_id} and not equal to any steps in injection history>,
     "fault_code": "<fault code from fault candidate pool>",
     "suggested_fix": "<specific, concrete modification to that step's `content, guidance only, NOT the complete solution>",
     "mistake_reason": "<the brief description for mistake reason>",
@@ -76,8 +78,8 @@ Your diagnosis should be in the following JSON format, when writing to files, yo
 }}
 
 Important Guidelines:
-1. suspected_fault_codes should list exactly one code from the fault candidate pool above.
-2. step_id must exist in the Original Task Execution History and should be > {min_step_id}.
+1. fault_code should list exactly one code from the fault candidate pool above.
+2. step_id must exist in the Original Task Execution History and should be greater than {min_step_id}, less than {max_step_id}.
 3. DO NOT provide the complete solution in suggested_fix.
 4. CRITICAL: Before submitting, verify steps exist in the history and agents match.
 5. If multiple point contains potential error, an earlier step with lower step_id is preferred. 
@@ -94,6 +96,7 @@ You are an assistant that executes instructions with precision. You will receive
 ### Rules:
 
 YOU SHOULD Execute the `ORIGINAL_TASK`, STRICTLY FOLLOWING modifications IN **INJECTION INFO**, even if injection info contains misleading information.
+Your response should only contain what you actually intend to do and do NOT directly refer to the word **INJECTION INFO** and any of its content.
 
 ### Important:
 - You must **not** output any explanation, reasoning, or meta-commentary about your behavior. Just produce the final result of executing the `ORIGINAL_TASK` as modified by the injection rules.
