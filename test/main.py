@@ -32,12 +32,11 @@ from pipeline.coding.run import run_coding_task
 from pipeline.multimodal_task.multimodal_eval import load_eval_results_new, run_eval_tasks_new
 
 # Project-local imports: utilities.
-from utils.common import match_info, read_json_file, save_final_result, write_json_file
+from utils.common import match_info, read_json_file, save_final_result
 from utils.task_record import normalize_parquet_task_row
 from utils.logging import handler
 from utils.logging import logger
 from adapter.MagenticOne.magentic_runtime import _load_config_from_ini
-from utils.prompts import REPLAY_PROMPT
 
 def _load_backend(name: str) -> Type[BaseAdapter]:
     """Load a backend adapter class by backend name.
@@ -126,11 +125,22 @@ def main(args):
         eval_results = load_eval_results(eval_path, data_source)
     
     if rollout_only:
+        logger.info(
+            "rollout=True: stop after round-0 eval (only e.g. round_0/.../log.json). "
+            "attack_analysis / diagnose_analysis and args.mode are not used. "
+            "Set rollout=False to run round>=1 strategist + AttackMonitor replay."
+        )
         return
-    # ROUND i >= 1: divide eval results of round 0 into success / fail
-    # sucess -> attack pipeline
-    # fail -> diagnose pipeline
-    # current implementation is for testing replay function
+
+    # From here: round >= 1 (strategist + executor). This block is skipped entirely when rollout=True above.
+    # Pipeline roles (round >= 1):
+    # - attack_analysis / diagnose_analysis: strategist (JSON plan: step_id, content, …).
+    # - AttackMonitor + run_coding_task: executor — replay with REPLAY_PROMPT injection
+    #   (MetaGPT: ThinkMiddleware on aask; MagenticOne: MagenticReplayMiddleware on create/create_stream in core).
+    # args.mode: full = success→attack, fail→diagnose; attack = only attack branch on success;
+    # diagnose = only diagnose branch on failure (other branch copies prior round without strategist).
+    mode = getattr(args, "mode", "full")
+    logger.info("Round>=1 pipeline mode=%s (strategist=attack|diagnose analysis, executor=AttackMonitor replay)", mode)
     completed_tasks = []
     for current in range(1, max_rounds + 1):
         for task in tasks:        
@@ -148,6 +158,7 @@ def main(args):
             output.mkdir(parents=True, exist_ok=True)
 
             if eval_results[task_id]:
+                # attack branch
                 logger.info(f'Last round processed as success for {task_id}, start the attack process...')
                 
                 workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_attack_analysis'
@@ -178,6 +189,7 @@ def main(args):
 
                 replay_info = get_attack_analysis(output)
             else:
+                # diagnose
                 logger.info(f'Last round processed as failure for {task_id}, start the diagnosis process...')
                 
                 workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_diagnose_analysis'
@@ -228,6 +240,12 @@ def main(args):
         # save last round's eval results
         last_eval_results = eval_results
         eval_path = output_root / data_source / f"round_{current}"
+        
+        # Check if round_{current} directory has any task outputs before evaluating
+        if not eval_path.exists() or not any(p.is_dir() for p in eval_path.iterdir()):
+            logger.warning(f"No task outputs found in {eval_path}, skipping evaluation for round {current}")
+            continue
+        
         if args.backend == "MagenticOne":
             run_eval_tasks_new(eval_path, data_source=data_source, skip_existing=skip_existing)
             eval_results = load_eval_results_new(eval_path, data_source)
@@ -298,14 +316,17 @@ if __name__ == "__main__":
     # TODO: concurrency
     parser.add_argument("--concurrent", action="store_true", help="Enable concurrent processing")
     parser.add_argument("--skip_existing", "-s", action="store_true")
-    parser.add_argument("--rollout", action="store_true")
+    parser.add_argument("--rollout", action="store_true", help="Stop after round 0 + eval only; no attack/diagnose (--mode ignored).")
     # TODO: add mode to control the run mode
     parser.add_argument(
         "--mode",
         type=str,
         choices=["full", "attack", "diagnose"],
         default="full",
-        help="Run mode",
+        help=(
+            "Only used when rollout is False (round>=1). full=success→attack+replay, fail→diagnose+replay; "
+            "attack=only attack path on eval success; diagnose=only diagnose path on eval failure."
+        ),
     )
 
     # args = parser.parse_args()
@@ -324,6 +345,8 @@ if __name__ == "__main__":
     #     mode="full",
     # )
     _GAIA_VAL = r"D:\myproject\mira-ai-lab\mas-failure-attribution\dataset\gaia_dataset_raw\2023\validation"
+    # GAIA presets below use rollout=True → main() returns after round_0 eval; you only get
+    # round_0/.../log.json. mode="full" does NOT control that; set rollout=False to run attack/diagnose.
     # --- GAIA metadata.level1 (default local run; switch level by changing which `args =` line is active) ---
     _args_gaia_level1 = argparse.Namespace(
         dataset=rf"{_GAIA_VAL}\metadata.level1.parquet",
@@ -361,7 +384,22 @@ if __name__ == "__main__":
         concurrent=False,
         mode="full",
     )
-    args = _args_gaia_level1
+    # MagenticOne pipeline smoke: rollout=False so round>=1 runs strategist (attack/diagnose) + executor
+    # (AttackMonitor; replay injection wired in adapter.MagenticOne.core). Toggle mode: full | attack | diagnose.
+    _args_magentic_one_pipeline = argparse.Namespace(
+        dataset=rf"{_GAIA_VAL}\metadata.level1.parquet",
+        backend="MagenticOne",
+        workspace=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_workspace"),
+        output=Path(r"D:\myproject\mira-ai-lab\mas-failure-attribution\runs\magentic_output"),
+        max_samples=1,
+        rollout=False,
+        skip_existing=False,
+        max_rounds=2,
+        concurrent=False,
+        mode="full",
+    )
+    # args = _args_gaia_level1
+    args = _args_magentic_one_pipeline
     # args = _args_gaia_level2
     # args = _args_gaia_level3
     main(args)

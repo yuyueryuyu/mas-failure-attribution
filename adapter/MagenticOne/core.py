@@ -29,6 +29,7 @@ from adapter.MagenticOne.magentic_runtime import (
     system_prompt_map_to_strings,
 )
 from adapter.base_adapter import BaseAdapter
+from monitor.attack_monitor import AttackMonitor
 from monitor.base_monitor import BaseMonitor, RoleType
 from utils.logging import logger
 
@@ -173,6 +174,12 @@ class MagenticOneAdapter(BaseAdapter):
         retry_base = float(os.environ.get("TE_MG2_RUN_RETRY_BASE_SEC", "10"))
 
         model_client = _build_model_client()
+        if isinstance(monitor, AttackMonitor):
+            from adapter.MagenticOne.middlewares.replay import (
+                apply_replay_middlewares_to_model_client,
+            )
+
+            apply_replay_middlewares_to_model_client(model_client, monitor)
         trace: dict[str, Any] = {
             "task": task_text,
             "started_at_unix": time.time(),
@@ -224,8 +231,8 @@ class MagenticOneAdapter(BaseAdapter):
 
                     if monitor is not None:
                         text = f"{type(event).__name__}: {event_content}"
-                        if len(text) > 12_000:
-                            text = text[:12_000] + "…(truncated)"
+                        # if len(text) > 12_000:
+                        #     text = text[:12_000] + "…(truncated)"
                         monitor.record_step(text, str(name), RoleType.ASSISTANT)
 
                     if isinstance(event, TaskResult):

@@ -8,7 +8,6 @@ from typing import Type
 
 from adapter.base_adapter import BaseAdapter
 from model.schema import History
-from monitor.attack_monitor import AttackMonitor
 from monitor.base_monitor import BaseMonitor
 from utils.common import dumps
 from utils.logging import logger
@@ -62,8 +61,11 @@ def run_coding_task(
         backend: Backend adapter implementing run/serialize APIs.
         recovery_dir: Optional recovery directory for backend resume.
         skip_existing: Whether to skip when ``log.json`` already exists.
-        monitor: Execution monitor used to capture history and topology.
-        replay_info: Prompt prefix used during replayed runs.
+        monitor: Execution monitor used to capture history and topology. For
+            ``MagenticOneAdapter`` + ``AttackMonitor``, replay prompt injection is applied
+            inside ``MagenticOneAdapter._run_team`` via ``patch_with_middlewares`` on the
+            model client (``MagenticReplayMiddleware``), same pattern as MetaGPT
+            ``ThinkMiddleware`` on ``llm.aask``.
 
     Returns:
         ``True`` when run completes and logs are saved, otherwise ``False``.

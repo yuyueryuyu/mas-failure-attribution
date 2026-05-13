@@ -37,12 +37,12 @@ Important Guidelines:
 3. If multiple injection points are possible, prefer an earlier step with lower step_id.
 4. attacked_content must be a concrete, implementable modification that is strong enough to convert a successful trajectory into failure.
 5. related_error: array of step_id integers from past injection history. Use [] if no direct relation.
-6. The file name of your solution MUST be `{task_id}_attack_analysis.json` and MUST be located at root directory.
+6. The file name of your solution MUST be `{task_id}_attack_analysis.json` and MUST be located at {workspace} directory.
 7. After constructing the JSON string, you MUST try to run json.loads() or any other json validation methods on it to confirm validity (no raw newlines in strings) before writing to file.
 8. Before writing any specific commands, you should check how to use it.
 
 Please analyze the task and provide your attack injection in the specified JSON format.
-The attack result should be saved to a file named '{task_id}_attack_analysis.json' in the workspace directory.
+The attack result should be saved to a file named '{task_id}_attack_analysis.json' in the {workspace} directory.
 """
 
 DIAGNOSE_ANALYSIS_PROMPT = '''
@@ -81,11 +81,11 @@ Important Guidelines:
 3. DO NOT provide the complete solution in suggested_fix.
 4. CRITICAL: Before submitting, verify steps exist in the history and agents match.
 5. If multiple point contains potential error, an earlier step with lower step_id is preferred. 
-6. The file name of your solution MUST be `{task_id}_diagnose_analysis.json` and MUST be located at root directory. 
+6. The file name of your solution MUST be `{task_id}_diagnose_analysis.json` and MUST be located at {workspace} directory. 
 7. After constructing json file, you should check json syntax and make sure it can be read. 
 8. Before writing any specific commands, you should check how to use it.
 9. After constructing the JSON string, you MUST try to run json.loads() or any other json valiation methods on it to confirm validity (no raw newlines in strings) before writing to file.
-Please analyze the task and provide your diagnosis in the specified JSON format. The diagnosis result should be saved to a file named '{task_id}_diagnose_analysis.json' in the workspace directory.
+Please analyze the task and provide your diagnosis in the specified JSON format. The diagnosis result should be saved to a file named '{task_id}_diagnose_analysis.json' in the {workspace} directory.
 '''
 
 REPLAY_PROMPT = '''

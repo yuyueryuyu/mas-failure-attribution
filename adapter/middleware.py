@@ -53,7 +53,7 @@ def build_llm_wrapper(func, middlewares):
                     cur_result = result
             if cur_result is not None:
                 result = cur_result
-                logger.info()
+                logger.info("Middleware before hook short-circuited; underlying async method was not called.")
             else:
                 result = await func(self, *ctx.args, **ctx.kwargs)
 
@@ -77,6 +77,7 @@ def build_llm_wrapper(func, middlewares):
                     cur_result = result
             if cur_result is not None:
                 result = cur_result
+                logger.info("Middleware before hook short-circuited; underlying sync method was not called.")
             else:
                 result = func(self, *ctx.args, **ctx.kwargs)
 

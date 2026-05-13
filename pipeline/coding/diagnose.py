@@ -1,13 +1,12 @@
 """Diagnosis-analysis stage for proposing root-cause fix suggestions."""
 
-import json
 from pathlib import Path
 import shutil
-from typing import Type
 
 from adapter.base_adapter import BaseAdapter
 from utils.common import read_json_file, write_json_file
 from utils.fault_library import fault_candidates_for_prompt
+from utils.magentic_trace_recovery import recover_diagnose_analysis_from_magentic_trace
 from utils.prompts import DIAGNOSE_ANALYSIS_PROMPT
 from utils.logging import logger
 
@@ -35,6 +34,7 @@ def diagnose_analysis(
     """
     task_id = task["question_ID"]
     logger.info(f'Diagnose Analysis start for Task ID: {task_id}, workspace: {workspace}, output: {output}')
+    result_path = workspace / f'{task_id}_diagnose_analysis.json'
     if len(injection_history) > 0:
         min_step_id = injection_history[-1]['step_id']
     else:
@@ -49,6 +49,7 @@ def diagnose_analysis(
         history_str=task['history'],
         injection_history=injection_history,
         min_step_id=min_step_id,
+        workspace=workspace
     )
     log = output / 'diagnose_analysis.json'
     if log.exists():
@@ -73,16 +74,24 @@ def diagnose_analysis(
         return False
     
     logger.info(f'Task {task_id} ends executing...')
-    result_path = workspace / f'{task_id}_diagnose_analysis.json'
     if result_path.exists():
         try:
             diagnose_suggestion = read_json_file(result_path)
-        except:
-            logger.error(f'attack analysis result read errors for task {task_id}')
+        except Exception:
+            logger.error(f'diagnose analysis result read errors for task {task_id}')
             return False
     else:
-        logger.error(f'diagnose analysis result not found for task {task_id}')
-        return False
+        recovered = recover_diagnose_analysis_from_magentic_trace(workspace)
+        if recovered is not None:
+            logger.info(
+                f'Recovered diagnose JSON from magentic_trace for task {task_id} '
+                f'(agents did not write {result_path.name})'
+            )
+            write_json_file(result_path, recovered)
+            diagnose_suggestion = recovered
+        else:
+            logger.error(f'diagnose analysis result not found for task {task_id}')
+            return False
 
     write_json_file(
         log,
