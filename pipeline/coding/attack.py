@@ -1,6 +1,7 @@
 
 """Attack-analysis stage for generating new fault injection suggestions."""
 
+import ast
 from asyncio import Semaphore
 import json
 from pathlib import Path
@@ -44,6 +45,7 @@ async def attack_analysis(
             min_step_id = injection_history[-1]['step_id']
         else:
             min_step_id = 0
+        result_path = workspace / f'{task_id}_attack_analysis.json'
         idea = ATTACK_ANALYSIS_PROMPT.format(
             task_id=task["question_ID"],
             question=task["question"],
@@ -56,7 +58,9 @@ async def attack_analysis(
             min_step_id=min_step_id,
             max_step_id=len(task['history']),
             message=message,
+            workspace=result_path,
         )
+        
         log = output / 'attack_analysis.json'
         if log.exists():
             if skipping_exists:
@@ -80,8 +84,20 @@ async def attack_analysis(
             return False
         
         logger.info(f'Task {task_id} ends executing...')
-        result_path = workspace / f'{task_id}_attack_analysis.json'
         if result_path.exists():
+            try:
+                with open(result_path, 'r+') as f:
+                    result = f.read()
+                    result = result.replace('\n', ' ')
+                    first = result.index('{')
+                    last = result.index('}')
+                    result = result[first:last+1]
+                    f.seek(0)          # 指针移到开头
+                    f.truncate()       # 清空原有内容
+                    f.write(result)
+            except:
+                logger.error(f'attack analysis result modify errors for task {task_id}')
+                return False
             try:
                 attack_suggestion = read_json_file(result_path)
             except:

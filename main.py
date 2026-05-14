@@ -10,8 +10,10 @@ This module orchestrates:
 
 # Standard library imports.
 import argparse
+import ast
 from asyncio import Semaphore
 import importlib
+import json
 import shutil
 from pathlib import Path
 from typing import Type
@@ -131,118 +133,120 @@ async def main(args):
     # current implementation is for testing replay function
     completed_tasks = []
     for current in range(1, max_rounds + 1):
-        coros = []
-        for task in tasks:       
+        length = len(tasks)
+        batch_size = concurrency * 100
+        for i in range(0, length+batch_size, batch_size):
+            coros = []
+            for task in tasks[i:i+batch_size]:       
 
-            async def _run(task):
-                task_id = task["task_id"].replace("/", "_")
-                if task_id in completed_tasks:
-                    return
-                
-                logger.info(f'Round {current}: Start to process Task {task_id}')
-                last_round_output = output_root / data_source / f"round_{current-1}" / task_id
-                if not last_round_output.exists():
-                    raise FileNotFoundError(f'last round output not exists for {task_id}')
-
-                last_round_log = read_json_file(last_round_output / 'log.json') 
-                output = output_root / data_source / f"round_{current}" / task_id
-                output.mkdir(parents=True, exist_ok=True)
-                log = output / 'log.json'
-                attack_path = output / 'attack_analysis.json'
-                diagnose_path = output / 'diagnose_analysis.json'
-                if log.exists():
-                    if not attack_path.exists() and not diagnose_path.exists():
-                        shutil.rmtree(output, ignore_errors=True)
-                        output.mkdir(parents=True, exist_ok=True)
-                    elif skip_existing:
-                        logger.info(f'Log for task {task_id} exists, skipping this round...')
+                async def _run(task):
+                    task_id = task["task_id"].replace("/", "_")
+                    if task_id in completed_tasks:
                         return
-                if eval_results[task_id]:
-                    logger.info(f'Last round processed as success for {task_id}, start the attack process...')
                     
-                    workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_attack_analysis'
-                    workspace.mkdir(parents=True, exist_ok=True)
-                    previous_injections_path = last_round_output / 'attack_analysis.json'
-                    previous_injections = (
-                        read_json_file(previous_injections_path) 
-                            if previous_injections_path.exists() else []
-                    )
+                    logger.info(f'Round {current}: Start to process Task {task_id}')
+                    last_round_output = output_root / data_source / f"round_{current-1}" / task_id
+                    if not last_round_output.exists():
+                        raise FileNotFoundError(f'last round output not exists for {task_id}')
 
-                    is_success = await attack_analysis(
-                        task=last_round_log,
-                        workspace=workspace,
-                        output=output,
-                        backend=backend,
-                        skipping_exists=skip_existing,
-                        injection_history=previous_injections,
-                        message=msg_results[task_id],
-                        semaphore=semaphore
-                    )
-
-                    if not is_success:
-                        logger.info(f'Attack Analysis Failed, skipping this round...')
-                        shutil.copytree(
-                            last_round_output,
-                            output,
-                            dirs_exist_ok=True
+                    last_round_log = read_json_file(last_round_output / 'log.json') 
+                    last_round_log = str(last_round_log).replace(f'round_{current-1}', f'round_{current}')
+                    last_round_log = ast.literal_eval(last_round_log)
+                    output = output_root / data_source / f"round_{current}" / task_id
+                    output.mkdir(parents=True, exist_ok=True)
+                    log = output / 'log.json'
+                    attack_path = output / 'attack_analysis.json'
+                    diagnose_path = output / 'diagnose_analysis.json'
+                    if log.exists():
+                        if skip_existing:
+                            logger.info(f'Log for task {task_id} exists, skipping this round...')
+                            return
+                    if eval_results[task_id]:
+                        logger.info(f'Last round processed as success for {task_id}, start the attack process...')
+                        
+                        workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_attack_analysis'
+                        workspace.mkdir(parents=True, exist_ok=True)
+                        previous_injections_path = last_round_output / 'attack_analysis.json'
+                        previous_injections = (
+                            read_json_file(previous_injections_path) 
+                                if previous_injections_path.exists() else []
                         )
-                        return
 
-                    replay_info = get_attack_analysis(output)
-                else:
-                    logger.info(f'Last round processed as failure for {task_id}, start the diagnosis process...')
+                        is_success = await attack_analysis(
+                            task=last_round_log,
+                            workspace=workspace,
+                            output=output,
+                            backend=backend,
+                            skipping_exists=skip_existing,
+                            injection_history=previous_injections,
+                            message=msg_results[task_id],
+                            semaphore=semaphore
+                        )
+
+                        if not is_success:
+                            logger.info(f'Attack Analysis Failed, skipping this round...')
+                            shutil.copytree(
+                                last_round_output,
+                                output,
+                                dirs_exist_ok=True
+                            )
+                            return
+
+                        replay_info = get_attack_analysis(output)
+                    else:
+                        logger.info(f'Last round processed as failure for {task_id}, start the diagnosis process...')
+                        
+                        workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_diagnose_analysis'
+                        workspace.mkdir(parents=True, exist_ok=True)
+
+                        previous_injections_path = last_round_output / 'diagnose_analysis.json'
+                        previous_injections = (
+                            read_json_file(previous_injections_path) 
+                                if previous_injections_path.exists() else []
+                        )
+
+                        is_success = await diagnose_analysis(
+                            task=last_round_log,
+                            workspace=workspace,
+                            output=output,
+                            backend=backend,
+                            skipping_exists=skip_existing,
+                            injection_history=previous_injections,
+                            message=msg_results[task_id],
+                            semaphore=semaphore
+                        )
+                        if not is_success:
+                            logger.info(f'Diagnose Analysis Failed, skipping this round...')
+                            shutil.copytree(
+                                last_round_output,
+                                output,
+                                dirs_exist_ok=True
+                            )
+                            return
+                        replay_info = get_diagnose_analysis(output)
                     
-                    workspace = workspace_root / data_source / f"round_{current}" / f'{task_id}_diagnose_analysis'
-                    workspace.mkdir(parents=True, exist_ok=True)
-
-                    previous_injections_path = last_round_output / 'diagnose_analysis.json'
-                    previous_injections = (
-                        read_json_file(previous_injections_path) 
-                            if previous_injections_path.exists() else []
-                    )
-
-                    is_success = await diagnose_analysis(
-                        task=last_round_log,
-                        workspace=workspace,
-                        output=output,
-                        backend=backend,
-                        skipping_exists=skip_existing,
-                        injection_history=previous_injections,
-                        message=msg_results[task_id],
-                        semaphore=semaphore
-                    )
-                    if not is_success:
-                        logger.info(f'Diagnose Analysis Failed, skipping this round...')
-                        shutil.copytree(
-                            last_round_output,
-                            output,
-                            dirs_exist_ok=True
-                        )
-                        return
-                    replay_info = get_diagnose_analysis(output)
-                
-                monitor = AttackMonitor(recovery_path, workspace, backend, replay_info[-1], last_round_log)
-                result = await run_coding_task(
-                    task,
-                    workspace,
-                    output,
-                    backend,
-                    skip_existing=skip_existing,
-                    monitor=monitor,
-                    semaphore=semaphore
-                )
-                if not result:
-                    logger.info(f'Replay Failed, skipping this round...')
-                    shutil.copytree(
-                        last_round_output,
+                    monitor = AttackMonitor(recovery_path, workspace, backend, replay_info[-1], last_round_log)
+                    result = await run_coding_task(
+                        task,
+                        workspace,
                         output,
-                        dirs_exist_ok=True
+                        backend,
+                        skip_existing=skip_existing,
+                        monitor=monitor,
+                        semaphore=semaphore
                     )
-                    return
-            
-            coros.append(_run(task))
+                    if not result:
+                        logger.info(f'Replay Failed, skipping this round...')
+                        shutil.copytree(
+                            last_round_output,
+                            output,
+                            dirs_exist_ok=True
+                        )
+                        return
+                
+                coros.append(_run(task))
         
-        await tqdm.gather(*coros)
+            await tqdm.gather(*coros)
 
         # save last round's eval results
         last_eval_results = eval_results

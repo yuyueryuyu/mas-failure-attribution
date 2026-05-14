@@ -17,6 +17,7 @@ Fault candidate pool (fault_code must be chosen from this list):
 Topology Information:
 {topology_info}
 
+INJECTION HISTORY:
 {injection_history}
 
 Original Task Execution History:
@@ -29,8 +30,11 @@ Your attack injection should be in the following JSON format. When writing to fi
     "fault_code": "<fault code from fault candidate pool>",
     "attacked_content": "<specific, concrete modification to that step's `content, guidance only, NOT the complete solution>",
     "mistake_reason": "<the brief description for mistake reason>",
-    "related_error": [<step_id(s) from past injection history that this fault directly relates to, or empty list>]
+    "related_error": [<step_id(s) from past INJECTION HISTORY that this fault directly relates to, or empty list>]
 }}
+Step-by-Step Guideline:
+1. **!VERY IMPORTANT!** YOU SHOULD CREATE A FILE NAMED `{task_id}_attack_analysis.json` FIRST in the path {workspace}
+2. THEN, WRITE THE JSON CONTENT INTO THE FILE
 
 Important Guidelines:
 1. fault_code must be exactly one code from the fault candidate pool above.
@@ -39,8 +43,7 @@ Important Guidelines:
 4. attacked_content must be a concrete, implementable modification that is strong enough to convert a successful trajectory into failure.
 5. related_error: array of step_id integers from past injection history. Use [] if no direct relation.
 6. The file name of your solution MUST be `{task_id}_attack_analysis.json` and MUST be located at root directory.
-7. After constructing the JSON string, you MUST try to run json.loads() or any other json validation methods on it to confirm validity (no raw newlines in strings) before writing to file.
-8. Before writing any specific commands, you should check how to use it.
+7. Before writing any specific commands, you should check how to use it.
 
 Please analyze the task and provide your attack injection in the specified JSON format.
 The attack result should be saved to a file named '{task_id}_attack_analysis.json' in the workspace directory.
@@ -63,6 +66,7 @@ Fault candidate pool (fault_code MUST be chosen from these codes when possible):
 Topology Information:
 {topology_info}
 
+INJECTION HISTORY:
 {injection_history}
 
 Original Task Execution History:
@@ -77,6 +81,9 @@ Your diagnosis should be in the following JSON format, when writing to files, yo
     "related_error": [<step_id(s) from past injection history that this fault directly relates to, or empty list>]
 }}
 
+Step-by-Step Guideline:
+1. **!VERY IMPORTANT!** YOU SHOULD CREATE A FILE NAMED `{task_id}_diagnose_analysis.json` FIRST in the path {workspace}
+2. THEN, WRITE THE JSON CONTENT INTO THE FILE, WITH NO LINEBREAKS
 Important Guidelines:
 1. fault_code should list exactly one code from the fault candidate pool above.
 2. step_id must exist in the Original Task Execution History and should be greater than {min_step_id}, less than {max_step_id}.
@@ -86,7 +93,6 @@ Important Guidelines:
 6. The file name of your solution MUST be `{task_id}_diagnose_analysis.json` and MUST be located at root directory. 
 7. After constructing json file, you should check json syntax and make sure it can be read. 
 8. Before writing any specific commands, you should check how to use it.
-9. After constructing the JSON string, you MUST try to run json.loads() or any other json valiation methods on it to confirm validity (no raw newlines in strings) before writing to file.
 Please analyze the task and provide your diagnosis in the specified JSON format. The diagnosis result should be saved to a file named '{task_id}_diagnose_analysis.json' in the workspace directory.
 '''
 

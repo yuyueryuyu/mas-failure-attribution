@@ -43,6 +43,7 @@ async def diagnose_analysis(
             min_step_id = injection_history[-1]['step_id']
         else:
             min_step_id = 0
+        result_path = workspace / f'{task_id}_diagnose_analysis.json'
         idea = DIAGNOSE_ANALYSIS_PROMPT.format(
             task_id=task["question_ID"],
             question=task["question"],
@@ -55,6 +56,7 @@ async def diagnose_analysis(
             min_step_id=min_step_id,
             max_step_id=len(task['history']),
             message=message,
+            workspace=result_path,
         )
         log = output / 'diagnose_analysis.json'
         if log.exists():
@@ -79,8 +81,20 @@ async def diagnose_analysis(
             return False
         
         logger.info(f'Task {task_id} ends executing...')
-        result_path = workspace / f'{task_id}_diagnose_analysis.json'
         if result_path.exists():
+            try:
+                with open(result_path, 'r+') as f:
+                    result = f.read()
+                    result = result.replace('\n', ' ')
+                    first = result.index('{')
+                    last = result.index('}')
+                    result = result[first:last+1]
+                    f.seek(0)          # 指针移到开头
+                    f.truncate()       # 清空原有内容
+                    f.write(result)
+            except:
+                logger.error(f'attack analysis result modify errors for task {task_id}')
+                return False
             try:
                 diagnose_suggestion = read_json_file(result_path)
             except:
@@ -89,7 +103,15 @@ async def diagnose_analysis(
         else:
             logger.error(f'diagnose analysis result not found for task {task_id}')
             return False
-
+        if isinstance(diagnose_suggestion, list):
+            diagnose_suggestion = diagnose_suggestion[0]
+        
+        if not 'step_id' in diagnose_suggestion:
+            return False
+        diagnose_step = diagnose_suggestion['step_id']
+        if diagnose_step <= min_step_id or diagnose_step > len(task['history']):
+            return False
+        
         write_json_file(
             log,
             injection_history + [diagnose_suggestion]
