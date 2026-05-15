@@ -32,8 +32,8 @@ from monitor.base_monitor import BaseMonitor
 # Project-local imports: pipeline stages.
 from pipeline.coding.attack import attack_analysis, get_attack_analysis
 from pipeline.coding.diagnose import diagnose_analysis, get_diagnose_analysis
-from pipeline.coding.eval import load_eval_results, run_eval_tasks
-from pipeline.coding.run import run_coding_task
+from pipeline.math.eval import load_eval_results, run_eval_tasks
+from pipeline.math.run import run_coding_task
 
 # Project-local imports: utilities.
 from utils.common import match_info, read_json_file, save_final_result, write_json_file
@@ -72,6 +72,12 @@ async def main(args):
     )
     logger.info(f"Loaded {len(dataset)} tasks from {args.dataset}")
     tasks = dataset.to_list()
+    for i, task in enumerate(tasks):
+        task['data_source'] = 'math'
+        task['task_id'] = f'Math_{i+1}'
+        task['question'] = task['problem']
+        task['reference_solution'] = task['solution']
+        
     if args.max_samples is not None:
         tasks = tasks[: args.max_samples]
         logger.info(f"Using {len(tasks)} tasks (max_samples={args.max_samples})")
@@ -255,6 +261,8 @@ async def main(args):
         eval_results, msg_results = load_eval_results(eval_path, data_source)
         
         for task_id in eval_results:
+            if task_id not in last_eval_results:
+                continue
             if eval_results[task_id] ^ last_eval_results[task_id]:
                 output = output_root / data_source / f"round_{current}" / task_id
                 if last_eval_results[task_id]:
@@ -274,7 +282,11 @@ async def main(args):
                         skipping_exists=skip_existing,
                         semaphore=semaphore
                     )"""
-                    final_info = get_attack_analysis(output)
+                    try:
+                        final_info = get_attack_analysis(output)
+                    except Exception as e:
+                        logger.error(f"Error occurred while analyzing attack results for {task_id}: {e}")
+                        continue
                     """
                     if is_success:
                         diagnose_info = get_diagnose_analysis(output)
@@ -286,7 +298,11 @@ async def main(args):
                     if not last_round_output.exists():
                         raise FileNotFoundError(f'last round output not exists for {task_id}')
                     last_round_log = read_json_file(last_round_output / 'log.json') 
-                    final_info = get_diagnose_analysis(output)
+                    try:
+                        final_info = get_diagnose_analysis(output)
+                    except Exception as e:
+                        logger.error(f"Error occurred while analyzing diagnose results for {task_id}: {e}")
+                        continue
 
                 completed_tasks.append(task_id)
                 save_final_result(output_root / 'final_results', last_round_log, final_info)
